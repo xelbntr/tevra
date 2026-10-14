@@ -1,6 +1,6 @@
-﻿# ClassPilot
+﻿# Learnly
 
-ClassPilot is an academic management web application scaffold. This repository contains a Vite and React frontend and a separate Express backend. The project is currently at its initial setup stage.
+Learnly is an academic management web application scaffold. This repository contains a Vite and React frontend and a separate Express backend. The project is currently at its initial setup stage.
 
 ## Project structure
 
@@ -23,3 +23,4 @@ npm install
 ```
 
 Run the frontend development server with `npm run dev` from `frontend/`. The backend package defines `npm run dev`, `npm start`, and `npm test` scripts for the initial setup; backend server functionality has not been added yet.
+
