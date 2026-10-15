@@ -15,5 +15,5 @@
     "noEmitOnError": true,
     "sourceMap": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "../frontend/src/supabase.ts"]
 }

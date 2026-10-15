@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent, MouseEvent, SVGProps } from 'react'
+import { AuthGate } from './AuthGate'
+import { AuthenticationError, fetchDashboard } from './api'
+import type { DashboardData } from './api'
+import { getSupabase } from './supabase'
 import './App.css'
 
 type IconName = 'grid' | 'calendar' | 'grading' | 'report' | 'person' | 'book' | 'paper' | 'send' | 'arrow'
@@ -38,12 +42,6 @@ function Icon({ name, size = 18, strokeWidth = 1.8 }: IconProps) {
   return <svg {...common}>{paths[name]}</svg>
 }
 
-const metrics = [
-  { label: 'Students', value: '32', icon: 'person' },
-  { label: 'Average Grade', value: '82.5', icon: 'book' },
-  { label: 'Attendance', value: '94%', icon: 'calendar' },
-] satisfies { label: string; value: string; icon: IconName }[]
-
 const navigation = [
   { label: 'Dashboard', icon: 'grid', href: '/dashboard' },
   { label: 'Assignments', icon: 'calendar', href: '/assignments' },
@@ -52,9 +50,18 @@ const navigation = [
 ] satisfies { label: string; icon: IconName; href: string }[]
 
 function App() {
+  return (
+    <AuthGate>
+      {(session) => <Dashboard key={session.user.id} email={session.user.email} />}
+    </AuthGate>
+  )
+}
+
+function Dashboard({ email }: { email: string | undefined }) {
   const [pathname, setPathname] = useState(window.location.pathname)
   const [prompt, setPrompt] = useState('')
   const [notice, setNotice] = useState('')
+  const [signingOut, setSigningOut] = useState(false)
 
   useEffect(() => {
     function syncPathname() {
@@ -68,6 +75,18 @@ function App() {
   const currentPath = pathname.replace(/\/+$/, '') || '/'
   const currentPage = navigation.find((item) => item.href === currentPath)
   const isDashboard = currentPath === '/' || currentPath === '/dashboard'
+
+  async function signOut() {
+    setSigningOut(true)
+    try {
+      const { error } = await getSupabase().auth.signOut({ scope: 'local' })
+      if (error) throw error
+    } catch {
+      showNotice('Could not sign out. Please try again.')
+    } finally {
+      setSigningOut(false)
+    }
+  }
 
   function navigate(event: MouseEvent<HTMLAnchorElement>, href: string) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -96,9 +115,12 @@ function App() {
             <span className="brand-symbol">L</span>
             <span className="brand-name">learnly</span>
           </a>
-          <button className="profile-button" type="button" aria-label="Profile" onClick={() => showNotice('Profile settings are coming soon.')}>
-            <Icon name="person" size={20} />
-          </button>
+          <div className="account-controls">
+            <span className="account-email" title={email}>{email}</span>
+            <button className="secondary-button" type="button" disabled={signingOut} onClick={signOut}>
+              {signingOut ? 'Signing out…' : 'Sign out'}
+            </button>
+          </div>
         </header>
 
         <div className="dashboard-layout">
@@ -140,17 +162,7 @@ function App() {
                   <button type="submit" aria-label="Send question"><Icon name="send" size={16} /></button>
                 </form>
 
-                <section className="metrics-grid" aria-label="Class statistics">
-                  {metrics.map((metric, index) => (
-                    <article className={`metric-card metric-card-${index + 1}`} key={metric.label}>
-                      <span className="metric-icon"><Icon name={metric.icon} size={16} /></span>
-                      <div className="metric-copy">
-                        <p className="metric-value">{metric.value}</p>
-                        <h2>{metric.label}</h2>
-                      </div>
-                    </article>
-                  ))}
-                </section>
+                <DashboardResults />
 
                 <section className="quick-actions" aria-label="Quick actions">
                   <button className="action-card" type="button" onClick={() => showNotice('Report generation is coming soon.')}>
@@ -178,6 +190,75 @@ function App() {
         {notice && <div className="notice" role="status">{notice}</div>}
       </section>
     </main>
+  )
+}
+
+function DashboardResults() {
+  const [retry, setRetry] = useState(0)
+  return <DashboardRequest key={retry} onRetry={() => setRetry((value) => value + 1)} />
+}
+
+function DashboardRequest({ onRetry }: { onRetry: () => void }) {
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [authenticationFailed, setAuthenticationFailed] = useState(false)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchDashboard(controller.signal)
+      .then((data) => {
+        if (!controller.signal.aborted) setDashboard(data)
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        setAuthenticationFailed(error instanceof AuthenticationError)
+        setLoadError(error instanceof Error ? error.message : 'Could not load the dashboard.')
+      })
+    return () => controller.abort()
+  }, [])
+
+  if (loadError) return (
+    <section className="dashboard-message" role="alert">
+      <p>{loadError}</p>
+      {!authenticationFailed && <button className="secondary-button" type="button" onClick={onRetry}>Try again</button>}
+    </section>
+  )
+  if (!dashboard) return <p role="status">Loading your dashboard…</p>
+
+  const metrics = [
+    { label: 'Students', value: dashboard.totalStudents, icon: 'person' },
+    { label: 'Courses', value: dashboard.classes.length, icon: 'book' },
+  ] satisfies { label: string; value: number; icon: IconName }[]
+
+  return (
+    <>
+      <section className="metrics-grid" aria-label="Class statistics">
+        {metrics.map((metric, index) => (
+          <article className={`metric-card metric-card-${index + 1}`} key={metric.label}>
+            <span className="metric-icon"><Icon name={metric.icon} size={16} /></span>
+            <div className="metric-copy">
+              <p className="metric-value">{metric.value}</p>
+              <h2>{metric.label}</h2>
+            </div>
+          </article>
+        ))}
+      </section>
+      <section className="class-list" aria-label="Your classes">
+        <h2>Your classes</h2>
+        {dashboard.classes.length === 0 ? (
+          <p>You don’t have any classes yet.</p>
+        ) : (
+          <ul>
+            {dashboard.classes.map((item) => (
+              <li key={item.id}>
+                <h3>{item.name}</h3>
+                <p>{item.course_code} · {item.academic_year} · Semester {item.semester}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
   )
 }
 

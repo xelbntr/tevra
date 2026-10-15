@@ -19,6 +19,20 @@ export async function requestDashboardData(){
   
 }
 
+export async function loginWithEmail(email: string, password: string) {
+  console.log("User logging in with email:", email);
+  
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+
+  if (error) {
+    throw new Error(`Login failed: ${error.message}`)
+  }
+}
+
+/*
 const { data, error } = await supabase
   .from('*')
   .select('*')
@@ -26,3 +40,4 @@ const { data, error } = await supabase
 
 console.log(data)
 console.log(error)
+*/

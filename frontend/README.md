@@ -1,4 +1,39 @@
-# React + Vite + TypeScript
+# Learnly frontend
+
+## Authentication and dashboard
+
+Copy `.env.example` to `.env` and set `VITE_SUPABASE_PUBLISHABLE_KEY` to this
+project's public publishable key. The project URL is already in the example.
+These Vite variables are visible in the browser; never put a service-role or
+secret key here. Vite loads `.env` automatically, so browser source does not use
+`dotenv` or `process.env`. Restart Vite after changing environment variables.
+
+- `src/supabase.ts` owns the shared browser client and session persistence.
+- `src/AuthGate.tsx` restores login, listens for auth changes, and shows the
+  email/password login form for signed-out users.
+- `src/api.ts` gets the current session and attaches its access token to the
+  dashboard request. It validates the response and handles authentication,
+  network, and server errors.
+- `src/App.tsx` shows the signed-in account, sign-out, course/student counts,
+  and class rows. Requests are cancelled when leaving the dashboard; signing
+  out or switching accounts unmounts the previous account's data.
+
+Supabase persists access and refresh tokens in browser storage and refreshes
+the session. The password is only submitted to Supabase Auth and cleared from
+form state afterward. Existing accounts sign in; registration is not added.
+
+`VITE_DASHBOARD_URL` defaults to `http://localhost:5000/api/dashboard`. It is
+separate from the existing `VITE_API_URL` because that variable includes `/api/v1`,
+while the current dashboard route uses `/api/dashboard`.
+
+Follow [BACKEND_SETUP.md](./BACKEND_SETUP.md) for the exact backend implementation
+and response shape. Until that backend handler is added, the frontend displays
+an error when it receives the old placeholder response instead of sample data.
+
+Run `npm test` for dashboard request tests. They use mocked sessions and HTTP
+responses and do not create accounts or write database data.
+
+## Tooling
 
 This frontend uses React and Vite with TypeScript, HMR, and Oxlint. Components live in `.tsx` files; other TypeScript files use `.ts`.
 
