@@ -4,7 +4,7 @@ Learnly is an academic management web application with a Vite and React frontend
 
 ## Project structure
 
-- `backend/` — Express API; `src/server.ts` serves the health endpoint, `src/db.ts` contains the Supabase query script, and `src/coach.ts` exports the AI coach helper.
+- `backend/` — Express API; `src/server.ts` serves the health and AI chat endpoints, `src/db.ts` contains the Supabase query script, and `src/coach.ts` connects the AI coach to Groq.
 - `frontend/` — Vite React application; components use `.tsx` and other source files use `.ts`.
 - `frontend/.env.example` — frontend environment variable template. Copy it to `frontend/.env` and fill in local values when needed. Create `backend/.env` for backend settings.
 
@@ -32,6 +32,7 @@ Run `npm run dev` in each package in separate terminals:
 - `backend/`: starts `src/server.ts` with automatic restarts through `tsx`. The default port is 5000; override it with `PORT` in `backend/.env`.
 
 The backend health endpoint is `GET http://localhost:5000/api/v1/health`.
+The AI Assistant page sends conversation messages to `POST http://localhost:5000/api/v1/ai/chat`. Put the Groq API key in `backend/.env` as `AI_API_KEY`; keep it out of frontend environment files.
 
 ## Type checks and builds
 
