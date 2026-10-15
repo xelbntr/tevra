@@ -1,11 +1,4 @@
-import { Groq } from 'groq-sdk';
-import env from 'dotenv'
-    
-env.config()
-
-const groq = new Groq({
-  apiKey: process.env.AI_API_KEY,
-});
+import { groq } from './ai.js'
 
 const systemPrompt = `
 You are an intelligent, reliable, and proactive AI Teaching Assistant designed to support teachers in making informed educational decisions, analyzing student performance, and improving classroom instruction.
