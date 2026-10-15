@@ -44,7 +44,7 @@ function Icon({ name, size = 18, strokeWidth = 1.8 }: IconProps) {
 
 const navigation = [
   { label: 'Dashboard', icon: 'grid', href: '/dashboard' },
-  { label: 'Assignments', icon: 'calendar', href: '/assignments' },
+  { label: 'Attendance', icon: 'calendar', href: '/attendance' },
   { label: 'Grading', icon: 'grading', href: '/grading' },
   { label: 'Reports', icon: 'report', href: '/reports' },
 ] satisfies { label: string; icon: IconName; href: string }[]
