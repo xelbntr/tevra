@@ -22,7 +22,7 @@ export async function requestDashboardData(){
 export async function loginWithEmail(email: string, password: string) {
   console.log("User logging in with email:", email);
   
-  const { data, error } = await supabase.auth.signInWithPassword({
+  const { error } = await supabase.auth.signInWithPassword({
     email,
     password,
   })

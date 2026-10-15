@@ -8,8 +8,11 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
   const [initializing, setInitializing] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
 
   useEffect(() => {
     if (!supabase) return
@@ -37,6 +40,31 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
     }
   }
 
+  async function signUp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setMessage('')
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const { data, error } = await getSupabase().auth.signUp({ email: email.trim(), password })
+      if (error) throw error
+      if (!data.session) {
+        setMessage('Account created. Check your email for a confirmation link, then sign in.')
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not create your account. Please try again.')
+    } finally {
+      setPassword('')
+      setConfirmPassword('')
+      setSubmitting(false)
+    }
+  }
+
   if (!supabaseConfigurationError && !initializing && session) return children(session)
 
   return (
@@ -53,20 +81,36 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
             <p role="status">Restoring your session…</p>
           ) : (
             <>
-              <h1>Welcome back</h1>
-              <p>Sign in to see your classes and students.</p>
-              <form className="auth-form" onSubmit={signIn} aria-busy={submitting}>
+              <h1>{mode === 'signin' ? 'Welcome back' : 'Create your account'}</h1>
+              <p>{mode === 'signin' ? 'Sign in to see your classes and students.' : 'Sign up with your email to get started.'}</p>
+              <form className="auth-form" onSubmit={mode === 'signin' ? signIn : signUp} aria-busy={submitting}>
                 <label htmlFor="login-email">Email</label>
-                <input id="login-email" type="email" autoComplete="username" required value={email}
+                <input id="login-email" type="email" autoComplete="email" required value={email}
                   onChange={(event) => setEmail(event.target.value)} disabled={submitting} />
                 <label htmlFor="login-password">Password</label>
-                <input id="login-password" type="password" autoComplete="current-password" required value={password}
+                <input id="login-password" type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required minLength={6} value={password}
                   onChange={(event) => setPassword(event.target.value)} disabled={submitting} />
+                {mode === 'signup' && <>
+                  <label htmlFor="confirm-password">Confirm password</label>
+                  <input id="confirm-password" type="password" autoComplete="new-password" required minLength={6} value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)} disabled={submitting} />
+                </>}
                 {error && <p className="error-message" role="alert">{error}</p>}
+                {message && <p role="status">{message}</p>}
                 <button className="primary-button" type="submit" disabled={submitting}>
-                  {submitting ? 'Signing in…' : 'Sign in'}
+                  {submitting ? (mode === 'signin' ? 'Signing in…' : 'Creating account…') : (mode === 'signin' ? 'Sign in' : 'Sign up')}
                 </button>
               </form>
+              <p className="auth-switch">
+                {mode === 'signin' ? 'New to Learnly?' : 'Already have an account?'}{' '}
+                <button className="text-button" type="button" disabled={submitting} onClick={() => {
+                  setMode(mode === 'signin' ? 'signup' : 'signin')
+                  setError('')
+                  setMessage('')
+                }}>
+                  {mode === 'signin' ? 'Sign up' : 'Sign in'}
+                </button>
+              </p>
             </>
           )}
         </div>

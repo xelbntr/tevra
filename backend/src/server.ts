@@ -1,9 +1,11 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors';
+import { rateLimit } from 'express-rate-limit'
 import { askAI } from './coach.js';
 
 const app = express()
+const aiChatLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false })
 
 // Allows handlers to read JSON sent by the frontend.
 app.use(express.json())
@@ -15,21 +17,33 @@ app.get('/api/v1/health', (_req, res) => {
 
 const port = process.env.PORT || 5000
 
-app.post("/submit", async (req, res, next) => {
-  console.log("AI Chat data requested")
+app.post('/api/v1/ai/chat', aiChatLimiter, async (req, res) => {
   try {
-    const text = req.body.text;
+    const messages = req.body?.messages
+    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 20
+      || messages.some((message: unknown) => {
+        if (!message || typeof message !== 'object') return true
+        const item = message as Record<string, unknown>
+        return !['user', 'assistant'].includes(String(item.role))
+          || typeof item.content !== 'string' || !item.content.trim() || item.content.length > 5000
+      })
+      || messages[messages.length - 1]?.role !== 'user'
+      || messages.reduce((total: number, message: { content: string }) => total + message.content.length, 0) > 20_000) {
+      res.status(400).json({ error: 'Send a conversation with a recent message of up to 5,000 characters.' })
+      return
+    }
 
-    console.log("AI Chat prompt received: ", text);
-    const result = await askAI(text);
-
-    res.json({ result })
+    const result = await askAI(messages)
+    const reply = result.choices[0]?.message?.content
+    if (typeof reply !== 'string' || !reply.trim()) throw new Error('The AI returned an empty response')
+    res.json({ reply })
   } catch (error) {
-    next(error);
+    console.error('AI chat request failed:', error)
+    res.status(502).json({ error: 'The AI could not respond right now. Please try again.' })
   }
 });
 
-app.get("/api/dashboard", async (req, res) => {
+app.get("/api/dashboard", async (_req, res) => {
   console.log("Dashboard data requested");
 
   // placeholder data. replace with actual db query

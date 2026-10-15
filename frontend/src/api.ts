@@ -13,6 +13,41 @@ export type DashboardData = {
   totalStudents: number
 }
 
+export type AssistantMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export async function sendAssistantMessage(messages: AssistantMessage[], signal?: AbortSignal): Promise<string> {
+  let response: Response
+  try {
+    response = await fetch(
+      import.meta.env.VITE_AI_CHAT_URL?.trim() || 'http://localhost:5000/api/v1/ai/chat',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages }),
+        signal,
+      },
+    )
+  } catch (error) {
+    if (signal?.aborted) throw error
+    throw new Error('Could not reach the AI service. Make sure the Learnly backend is running.')
+  }
+
+  const data: unknown = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+      ? data.error
+      : 'The AI could not respond right now. Please try again.'
+    throw new Error(message)
+  }
+  if (!data || typeof data !== 'object' || !('reply' in data) || typeof data.reply !== 'string') {
+    throw new Error('The AI service returned an unexpected response.')
+  }
+  return data.reply
+}
+
 export class AuthenticationError extends Error {
   constructor() {
     super('Your session is no longer valid. Please sign out and sign in again.')

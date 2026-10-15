@@ -3,9 +3,12 @@ import env from 'dotenv'
     
 env.config()
 
-const groq = new Groq({
-  apiKey: process.env.AI_API_KEY,
-});
+const groq = new Groq({ apiKey: process.env.AI_API_KEY || 'missing-groq-api-key' });
+
+export type CoachMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
 
 const systemPrompt = `
 You are an intelligent, reliable, and proactive AI Teaching Assistant designed to support teachers in making informed educational decisions, analyzing student performance, and improving classroom instruction.
@@ -79,19 +82,10 @@ Function as a dependable educational assistant that reduces teachers' administra
 Be precise when analyzing, practical when recommending, and efficient when communicating.
 `;
 
-export async function askAI(prompt: string){
-  console.log("Attempting to contact Groq API...");
+export async function askAI(messages: CoachMessage[]){
+  if (!process.env.AI_API_KEY) throw new Error('AI_API_KEY is not configured')
   const result = await groq.chat.completions.create({
-    "messages": [
-      {
-        "role": "system",
-        "content": systemPrompt
-      },
-      {
-        "role": "user",
-        "content": prompt
-      }
-    ],
+    messages: [{ role: 'system', content: systemPrompt }, ...messages],
     "model": "openai/gpt-oss-120b",
     "temperature": 1,
     "max_completion_tokens": 2048,
