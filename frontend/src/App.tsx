@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, MouseEvent, SVGProps } from 'react'
 import { AuthGate } from './AuthGate'
-import { AuthenticationError, fetchDashboard } from './api'
-import type { DashboardData } from './api'
+import { AuthenticationError, fetchDashboard, sendAssistantMessage } from './api'
+import type { AssistantMessage, DashboardData } from './api'
 import { getSupabase } from './supabase'
 import './App.css'
 
-type IconName = 'grid' | 'calendar' | 'grading' | 'report' | 'person' | 'book' | 'paper' | 'send' | 'arrow'
+type IconName = 'grid' | 'calendar' | 'grading' | 'report' | 'person' | 'book' | 'paper' | 'send' | 'arrow' | 'sparkles'
 
 type IconProps = {
   name: IconName
@@ -37,6 +37,7 @@ function Icon({ name, size = 18, strokeWidth = 1.8 }: IconProps) {
     paper: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="m8 12 2.5 2.5L16 9M8 7h8M8 17h3" /></>,
     send: <><path d="m21 3-7.2 18-3.8-7-7-3.8L21 3Z" /><path d="M10 14 21 3" /></>,
     arrow: <><path d="M7 17 17 7M8 7h9v9" /></>,
+    sparkles: <><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z" /><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z" /><path d="m5 2 .7 1.8L7.5 4.5l-1.8.7L5 7l-.7-1.8L2.5 4.5l1.8-.7L5 2Z" /></>,
   }
 
   return <svg {...common}>{paths[name]}</svg>
@@ -44,9 +45,9 @@ function Icon({ name, size = 18, strokeWidth = 1.8 }: IconProps) {
 
 const navigation = [
   { label: 'Dashboard', icon: 'grid', href: '/dashboard' },
-  { label: 'Assignments', icon: 'calendar', href: '/assignments' },
-  { label: 'Grading', icon: 'grading', href: '/grading' },
-  { label: 'Reports', icon: 'report', href: '/reports' },
+  { label: 'Attendance', icon: 'calendar', href: '/attendance' },
+  { label: 'Grading & Reports', icon: 'grading', href: '/grading-reports' },
+  { label: 'AI Assistant', icon: 'sparkles', href: '/assistant' },
 ] satisfies { label: string; icon: IconName; href: string }[]
 
 function App() {
@@ -60,6 +61,7 @@ function App() {
 function Dashboard({ email }: { email: string | undefined }) {
   const [pathname, setPathname] = useState(window.location.pathname)
   const [prompt, setPrompt] = useState('')
+  const [assistantPrompt, setAssistantPrompt] = useState('')
   const [notice, setNotice] = useState('')
   const [signingOut, setSigningOut] = useState(false)
 
@@ -75,6 +77,7 @@ function Dashboard({ email }: { email: string | undefined }) {
   const currentPath = pathname.replace(/\/+$/, '') || '/'
   const currentPage = navigation.find((item) => item.href === currentPath)
   const isDashboard = currentPath === '/' || currentPath === '/dashboard'
+  const isAssistant = currentPath === '/assistant'
 
   async function signOut() {
     setSigningOut(true)
@@ -103,8 +106,10 @@ function Dashboard({ email }: { email: string | undefined }) {
   function askAssistant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!prompt.trim()) return
-    showNotice('AI assistant will be available when the service is connected.')
+    setAssistantPrompt(prompt.trim())
     setPrompt('')
+    window.history.pushState({}, '', '/assistant')
+    setPathname('/assistant')
   }
 
   return (
@@ -177,6 +182,11 @@ function Dashboard({ email }: { email: string | undefined }) {
                   </button>
                 </section>
               </>
+            ) : isAssistant ? (
+              <AssistantChat
+                initialPrompt={assistantPrompt}
+                onInitialPromptHandled={() => setAssistantPrompt('')}
+              />
             ) : (
               <section className="coming-soon" aria-live="polite">
                 <div className="coming-soon-icon"><Icon name={currentPage?.icon ?? 'book'} size={25} /></div>
@@ -190,6 +200,87 @@ function Dashboard({ email }: { email: string | undefined }) {
         {notice && <div className="notice" role="status">{notice}</div>}
       </section>
     </main>
+  )
+}
+
+function AssistantChat({ initialPrompt, onInitialPromptHandled }: {
+  initialPrompt: string
+  onInitialPromptHandled: () => void
+}) {
+  const [messages, setMessages] = useState<AssistantMessage[]>([])
+  const [draft, setDraft] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const initialPromptHandled = useRef(false)
+
+  async function sendMessage(rawMessage: string) {
+    const content = rawMessage.trim()
+    if (!content || loading) return
+    const conversation: AssistantMessage[] = [...messages, { role: 'user' as const, content }].slice(-20)
+    setMessages(conversation)
+    setDraft('')
+    setError('')
+    setLoading(true)
+    try {
+      const reply = await sendAssistantMessage(conversation)
+      setMessages([...conversation, { role: 'assistant' as const, content: reply }].slice(-20))
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'The AI could not respond. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!initialPrompt || initialPromptHandled.current) return
+    initialPromptHandled.current = true
+    void sendMessage(initialPrompt)
+    onInitialPromptHandled()
+  }, [initialPrompt])
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    void sendMessage(draft)
+  }
+
+  return (
+    <section className="assistant-panel" aria-label="AI Assistant">
+      <div className="assistant-intro">
+        <span className="assistant-icon"><Icon name="sparkles" size={20} /></span>
+        <div>
+          <h2>Teaching assistant</h2>
+          <p>Ask for lesson ideas, classroom strategies, or help shaping teaching materials.</p>
+        </div>
+      </div>
+      <div className="chat-transcript" aria-live="polite" aria-busy={loading}>
+        {messages.length === 0 && (
+          <div className="chat-empty">
+            <strong>What would you like help with?</strong>
+            <span>Try asking for a lesson plan, an activity, or an explanation of a topic.</span>
+          </div>
+        )}
+        {messages.map((message, index) => (
+          <article className={`chat-message chat-message-${message.role}`} key={`${index}-${message.role}`}>
+            <span className="chat-speaker">{message.role === 'user' ? 'You' : 'Learnly AI'}</span>
+            <p>{message.content}</p>
+          </article>
+        ))}
+        {loading && <p className="chat-pending" role="status">Learnly AI is thinking…</p>}
+      </div>
+      {error && <p className="error-message chat-error" role="alert">{error}</p>}
+      <form className="assistant-composer" onSubmit={submit}>
+        <label className="sr-only" htmlFor="assistant-prompt">Message the AI assistant</label>
+        <textarea id="assistant-prompt" rows={3} maxLength={5000} value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="Write a message…" disabled={loading} />
+        <div className="composer-footer">
+          <span>AI responses can be inaccurate. Review materials before using them.</span>
+          <button className="primary-button" type="submit" disabled={loading || !draft.trim()}>
+            {loading ? 'Thinking…' : 'Send'}
+          </button>
+        </div>
+      </form>
+    </section>
   )
 }
 
