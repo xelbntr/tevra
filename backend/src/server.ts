@@ -4,12 +4,14 @@ import cors from 'cors';
 import { askAI } from './coach.js';
 import { AuthenticationError } from './auth.js'
 import { requestDashboardData } from './dashboard.js'
+import { attendanceRouter } from './attendance.js'
 
 const app = express()
 
 // Allows handlers to read JSON sent by the frontend.
 app.use(express.json())
 app.use(cors())
+app.use('/api/attendance', attendanceRouter)
 
 app.get('/api/v1/health', (_req, res) => {
   res.json({ status: 'ok', message: 'Learnly backend is running' })
