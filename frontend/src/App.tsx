@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react'
+import type { FormEvent, MouseEvent, SVGProps } from 'react'
 import './App.css'
 
-function Icon({ name, size = 18, strokeWidth = 1.8 }) {
-  const common = {
+type IconName = 'grid' | 'calendar' | 'grading' | 'report' | 'person' | 'book' | 'paper' | 'send' | 'arrow'
+
+type IconProps = {
+  name: IconName
+  size?: number
+  strokeWidth?: number
+}
+
+function Icon({ name, size = 18, strokeWidth = 1.8 }: IconProps) {
+  const common: SVGProps<SVGSVGElement> = {
     width: size,
     height: size,
     viewBox: '0 0 24 24',
@@ -33,14 +42,14 @@ const metrics = [
   { label: 'Students', value: '32', icon: 'person' },
   { label: 'Average Grade', value: '82.5', icon: 'book' },
   { label: 'Attendance', value: '94%', icon: 'calendar' },
-]
+] satisfies { label: string; value: string; icon: IconName }[]
 
 const navigation = [
   { label: 'Dashboard', icon: 'grid', href: '/dashboard' },
   { label: 'Assignments', icon: 'calendar', href: '/assignments' },
   { label: 'Grading', icon: 'grading', href: '/grading' },
   { label: 'Reports', icon: 'report', href: '/reports' },
-]
+] satisfies { label: string; icon: IconName; href: string }[]
 
 function App() {
   const [pathname, setPathname] = useState(window.location.pathname)
@@ -60,19 +69,19 @@ function App() {
   const currentPage = navigation.find((item) => item.href === currentPath)
   const isDashboard = currentPath === '/' || currentPath === '/dashboard'
 
-  function navigate(event, href) {
+  function navigate(event: MouseEvent<HTMLAnchorElement>, href: string) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     event.preventDefault()
     if (window.location.pathname !== href) window.history.pushState({}, '', href)
     setPathname(href)
   }
 
-  function showNotice(message) {
+  function showNotice(message: string) {
     setNotice(message)
     window.setTimeout(() => setNotice(''), 2600)
   }
 
-  function askAssistant(event) {
+  function askAssistant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!prompt.trim()) return
     showNotice('AI assistant will be available when the service is connected.')

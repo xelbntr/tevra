@@ -1,6 +1,8 @@
-# React + Vite
+# React + Vite + TypeScript
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+This frontend uses React and Vite with TypeScript, HMR, and Oxlint. Components live in `.tsx` files; other TypeScript files use `.ts`.
+
+Run `npm run dev` to develop, `npm run typecheck` to check types, `npm run lint` to lint, and `npm run build` to check types and create the production build. Vite transforms TypeScript; the build script runs the TypeScript compiler separately to catch type errors.
 
 Currently, two official plugins are available:
 
@@ -13,4 +15,4 @@ The React Compiler is not enabled on this template because of its impact on dev 
 
 ## Expanding the Oxlint configuration
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Strict TypeScript checks are configured in `tsconfig.json`. Oxlint supplies lint rules; `npm run typecheck` supplies compiler type checks.
