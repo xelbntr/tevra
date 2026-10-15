@@ -2,7 +2,8 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors';
 import { askAI } from './coach.js';
-import { AuthenticationError, requestDashboardData } from './db.js'
+import { AuthenticationError } from './auth.js'
+import { requestDashboardData } from './dashboard.js'
 
 const app = express()
 

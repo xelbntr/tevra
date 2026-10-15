@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { before, after, beforeEach, test } from 'node:test'
-import type { ReportData } from '../src/report.js'
+import type { ReportData } from '../src/reports/data.js'
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`
 const studentId = uuid(1)
@@ -82,9 +82,9 @@ const mockFetch: typeof fetch = async (input, init) => {
   throw new Error(`Unexpected test request: ${url}`)
 }
 
-let generateReport: typeof import('../src/db.js').generateReport
-let generateStudentReport: typeof import('../src/report.js').generateStudentReport
-let AuthenticationError: typeof import('../src/db.js').AuthenticationError
+let generateReport: typeof import('../src/reports/report.js').generateReport
+let buildStudentReport: typeof import('../src/reports/report.js').buildStudentReport
+let AuthenticationError: typeof import('../src/auth.js').AuthenticationError
 
 before(async () => {
   globalThis.fetch = mockFetch
@@ -92,8 +92,8 @@ before(async () => {
   process.env.SUPABASE_ANON_KEY = 'test-anon-key'
   process.env.GROQ_BASE_URL = 'https://groq.test'
   process.env.AI_API_KEY = 'test-ai-key'
-  ;({ generateReport, AuthenticationError } = await import('../src/db.js'))
-  ;({ generateStudentReport } = await import('../src/report.js'))
+  ;({ AuthenticationError } = await import('../src/auth.js'))
+  ;({ generateReport, buildStudentReport } = await import('../src/reports/report.js'))
 })
 
 after(() => { globalThis.fetch = originalFetch })
@@ -241,7 +241,7 @@ test('rejects invalid database scores, maxima, statuses and missing relationship
   ]) {
     const data = structuredClone({ ...enrollment, attendance: attendanceRows, grades: gradeRows })
     change(data)
-    await assert.rejects(generateStudentReport(data))
+    await assert.rejects(buildStudentReport(data))
   }
   assert.equal(aiRequests().length, 0)
 })
@@ -251,7 +251,7 @@ test('rejects arithmetic overflow before contacting the model', async () => {
     ...enrollment, attendance: attendanceRows,
     grades: [gradeRow(Number.MAX_VALUE, Number.MIN_VALUE)],
   }
-  await assert.rejects(generateStudentReport(data), /percentage is not finite/)
+  await assert.rejects(buildStudentReport(data), /percentage is not finite/)
   assert.equal(aiRequests().length, 0)
 })
 

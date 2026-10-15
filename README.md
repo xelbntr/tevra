@@ -4,7 +4,7 @@ Learnly is an academic management web application with a Vite and React frontend
 
 ## Project structure
 
-- `backend/` — Express API; `src/server.ts` serves the health and AI chat endpoints, `src/db.ts` contains the Supabase query script, and `src/coach.ts` connects the AI coach to Groq.
+- `backend/` — Express API; `src/server.ts` defines routes, `src/auth.ts` verifies sessions, `src/reports/` builds student reports, and `src/coach.ts` connects the AI coach to Groq.
 - `frontend/` — Vite React application; components use `.tsx` and other source files use `.ts`.
 - `frontend/.env.example` — frontend environment variable template. Copy it to `frontend/.env` and fill in local values when needed. Create `backend/.env` for backend settings.
 
@@ -47,7 +47,7 @@ Run these commands from the relevant package folder:
 
 For a production backend, run `npm run build` followed by `npm start`. To preview the frontend build locally, run `npm run preview`.
 
-TypeScript checks code during development and builds; it does not validate external data at runtime. The standalone database script requires `SUPABASE_URL` and `SUPABASE_ANON_KEY`, and the AI coach requires `AI_API_KEY`. These helpers are not called by the health endpoint.
+TypeScript checks code during development and builds; it does not validate external data at runtime. Backend authentication requires `SUPABASE_URL` and `SUPABASE_ANON_KEY`, and AI features require `AI_API_KEY`. These helpers are not called by the health endpoint.
 
 Use `.js` extensions for relative imports between backend source modules (for example, `import { askAI } from './coach.js'`). TypeScript resolves these to `.ts` source files and preserves working imports in the compiled Node.js output.
 

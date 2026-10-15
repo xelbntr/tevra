@@ -1,6 +1,6 @@
 # Student reports
 
-Call `generateReport(accessToken, { student_id, class_id })` from `src/db.ts`.
+Call `generateReport(accessToken, { student_id, class_id })` from `src/reports/report.ts`.
 Both IDs must be UUIDs. Supabase verifies the session and applies the lecturer's
 existing row access policies. A missing or inaccessible enrollment returns `null`.
 Database, validation, authentication, and AI failures throw an error.
@@ -44,12 +44,21 @@ Successful calls return:
 Attendance and grade histories are fetched concurrently with cursor pagination
 and exact counts, so a server row cap does not silently truncate summaries.
 The AI's user message is only the queried records serialized as JSON; it receives
-no coach conversation or derived metrics. `src/report.ts` validates those records,
+no coach conversation or derived metrics. `src/reports/report.ts` validates those records,
 calculates all numeric metrics in the backend, and validates the AI's JSON
 narrative with Zod and Groq's strict JSON schema output format. Backend-calculated
 grade summaries and attendance totals are attached after generation. Empty
 histories produce a factual draft without a model request. Incomplete, empty,
 malformed, or structurally invalid AI responses are rejected.
+
+## Where to read the code
+
+- `src/reports/report.ts`: start with `generateReport()`. It fetches the records,
+  then calls `buildStudentReport()` to validate them, calculate metrics, generate
+  the narrative, and assemble the response.
+- `src/reports/data.ts`: database queries, record validation rules, and pagination.
+- `src/reports/narrative.ts`: AI instructions, empty-record draft, and response checks.
+- `src/auth.ts`: shared session verification and authenticated database client.
 
 Reports describe one student's enrollment in one subject class and semester.
 They are drafts for teacher review. The prompt requests evidence-based support

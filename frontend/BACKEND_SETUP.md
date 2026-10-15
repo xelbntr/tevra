@@ -4,63 +4,16 @@ The frontend logs in directly through Supabase Auth, persists the session, and
 sends the current access token to `GET /api/dashboard` in the `Authorization`
 header. No backend login endpoint or password storage is needed.
 
-The backend implementation below is a handoff example; backend files have not
-been edited. The table and ownership columns were checked against project
-`bclblebgoptvgrrpmylz`. It uses the existing RLS policies without schema changes.
+The backend implementation uses the existing RLS policies without schema changes.
 
-## 1. Replace `backend/src/db.ts`
+## 1. Configure shared authentication
 
-The existing shared client and `loginWithEmail()` are replaced by a client created
-for each request. Keep `SUPABASE_URL` and `SUPABASE_ANON_KEY` in `backend/.env`.
+`backend/src/auth.ts` creates an authenticated client for each request and
+verifies the session. Keep `SUPABASE_URL` and `SUPABASE_ANON_KEY` in `backend/.env`.
 Use a publishable or legacy anon key for these user-scoped queries.
 
-```ts
-import 'dotenv/config'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.SUPABASE_URL
-const supabaseKey = process.env.SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('SUPABASE_URL and SUPABASE_ANON_KEY must be set')
-}
-
-export class AuthenticationError extends Error {}
-
-export async function requestDashboardData(accessToken: string) {
-  const db = createClient(supabaseUrl!, supabaseKey!, {
-    global: {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  })
-
-  const { data: { user }, error: authError } = await db.auth.getUser(accessToken)
-  if (authError || !user) {
-    throw new AuthenticationError('Invalid or expired session')
-  }
-
-  const [classesResult, studentsResult] = await Promise.all([
-    db.from('classes')
-      .select('id, name, course_code, academic_year, semester')
-      .eq('lecturer_id', user.id)
-      .order('created_at', { ascending: false }),
-    db.from('students').select('id', { count: 'exact', head: true }),
-  ])
-
-  if (classesResult.error) throw classesResult.error
-  if (studentsResult.error) throw studentsResult.error
-
-  return {
-    classes: classesResult.data ?? [],
-    totalStudents: studentsResult.count ?? 0,
-  }
-}
-```
+`backend/src/dashboard.ts` calls `authenticate()` and fetches the class list and
+student count. Report-specific queries live separately in `backend/src/reports/`.
 
 The classes filter uses the verified user ID. The existing RLS policies also
 enforce ownership: the student count includes only students enrolled in that
@@ -69,15 +22,16 @@ key with a service-role key for these queries or trust a user ID sent by the
 browser. The class list uses Supabase's configured maximum rows per response;
 add pagination when supporting more classes than that limit (usually 1,000).
 
-## 2. Replace the dashboard route in `backend/src/server.ts`
+## 2. Dashboard route in `backend/src/server.ts`
 
-Add this import alongside the other imports (the `.js` extension is intentional):
+The route uses these imports (the `.js` extension is intentional):
 
 ```ts
-import { AuthenticationError, requestDashboardData } from './db.js'
+import { AuthenticationError } from './auth.js'
+import { requestDashboardData } from './dashboard.js'
 ```
 
-Replace the placeholder `app.get('/api/dashboard', ...)` handler with:
+The handler returns the dashboard or an authentication/database error:
 
 ```ts
 app.get('/api/dashboard', async (req, res) => {
