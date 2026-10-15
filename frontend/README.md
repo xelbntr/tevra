@@ -30,8 +30,19 @@ Follow [BACKEND_SETUP.md](./BACKEND_SETUP.md) for the exact backend implementati
 and response shape. Until that backend handler is added, the frontend displays
 an error when it receives the old placeholder response instead of sample data.
 
-Run `npm test` for dashboard request tests. They use mocked sessions and HTTP
+## AI assistant
+
+`src/api.ts` sends each prompt to `POST /submit` as `{ "text": "Your question" }`
+and extracts the assistant's reply from `result.choices[0].message.content`.
+The transcript stays visible in the UI, but the backend receives only the current
+prompt. Set `VITE_AI_CHAT_URL` to the full submit URL for a deployed backend;
+the default is `http://localhost:5000/submit`. If your existing `.env` points to
+`/api/v1/ai/chat`, change it to `/submit` and restart Vite.
+
+Run `npm test` for dashboard and AI request tests. They use mocked sessions and HTTP
 responses and do not create accounts or write database data.
+The integration test also starts the backend and a local mock AI provider;
+install dependencies in both packages first. It needs no real API keys or AI credits.
 
 ## Tooling
 

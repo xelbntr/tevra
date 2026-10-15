@@ -32,7 +32,7 @@ Run `npm run dev` in each package in separate terminals:
 - `backend/`: starts `src/server.ts` with automatic restarts through `tsx`. The default port is 5000; override it with `PORT` in `backend/.env`.
 
 The backend health endpoint is `GET http://localhost:5000/api/v1/health`.
-The AI Assistant page sends conversation messages to `POST http://localhost:5000/api/v1/ai/chat`. Put the Groq API key in `backend/.env` as `AI_API_KEY`; keep it out of frontend environment files.
+The AI Assistant page sends the current prompt to `POST http://localhost:5000/submit` as `{ "text": "Your question" }` and reads the reply from `result.choices[0].message.content`. The backend handles each prompt independently; previous messages remain visible in the frontend but are not sent as conversation history. `VITE_AI_CHAT_URL` can override the submit URL; update any existing `/api/v1/ai/chat` setting in `frontend/.env` to `/submit` and restart Vite. Put the Groq API key in `backend/.env` as `AI_API_KEY`; keep it out of frontend environment files.
 
 ## Type checks and builds
 
@@ -43,7 +43,7 @@ Run these commands from the relevant package folder:
 | `npm run typecheck` | Checks React and Vite configuration types | Checks all backend source types |
 | `npm run build` | Checks types and creates `dist/` | Checks types and compiles TypeScript into `dist/` |
 | `npm run lint` | Runs Oxlint | Not configured |
-| `npm test` | Not configured | Runs Node's test runner with TypeScript support |
+| `npm test` | Checks dashboard and AI request contracts | Runs Node's test runner with TypeScript support |
 
 For a production backend, run `npm run build` followed by `npm start`. To preview the frontend build locally, run `npm run preview`.
 

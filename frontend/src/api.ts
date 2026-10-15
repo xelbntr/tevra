@@ -18,15 +18,19 @@ export type AssistantMessage = {
   content: string
 }
 
-export async function sendAssistantMessage(messages: AssistantMessage[], signal?: AbortSignal): Promise<string> {
+export async function sendAssistantMessage(text: string, signal?: AbortSignal): Promise<string> {
+  const prompt = text.trim()
+  if (!prompt) throw new Error('Enter a message for the AI assistant.')
+  signal?.throwIfAborted()
+
   let response: Response
   try {
     response = await fetch(
-      import.meta.env.VITE_AI_CHAT_URL?.trim() || 'http://localhost:5000/api/v1/ai/chat',
+      import.meta.env.VITE_AI_CHAT_URL?.trim() || 'http://localhost:5000/submit',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({ text: prompt }),
         signal,
       },
     )
@@ -42,10 +46,15 @@ export async function sendAssistantMessage(messages: AssistantMessage[], signal?
       : 'The AI could not respond right now. Please try again.'
     throw new Error(message)
   }
-  if (!data || typeof data !== 'object' || !('reply' in data) || typeof data.reply !== 'string') {
+  const result = data && typeof data === 'object' && 'result' in data ? data.result : null
+  const choices = result && typeof result === 'object' && 'choices' in result ? result.choices : null
+  const choice: unknown = Array.isArray(choices) ? choices[0] : null
+  const message = choice && typeof choice === 'object' && 'message' in choice ? choice.message : null
+  if (!message || typeof message !== 'object' || !('content' in message)
+    || typeof message.content !== 'string' || !message.content.trim()) {
     throw new Error('The AI service returned an unexpected response.')
   }
-  return data.reply
+  return message.content
 }
 
 export class AuthenticationError extends Error {

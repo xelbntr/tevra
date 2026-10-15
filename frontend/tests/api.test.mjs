@@ -15,6 +15,7 @@ before(async () => {
   process.env.VITE_SUPABASE_URL = 'https://example.supabase.co'
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_test'
   process.env.VITE_DASHBOARD_URL = 'http://localhost:5000/api/dashboard'
+  delete process.env.VITE_AI_CHAT_URL
   server = await createServer({
     root: fileURLToPath(new URL('../', import.meta.url)),
     configFile: false,
@@ -102,4 +103,68 @@ test('cancels requests when the dashboard unmounts', async () => {
   })
   await assert.rejects(api.fetchDashboard(controller.signal), { name: 'AbortError' })
   assert.equal(requestSignal, controller.signal)
+})
+
+test('posts the current prompt to the backend submit route and reads its completion', async () => {
+  const completion = {
+    result: { choices: [{ message: { role: 'assistant', content: 'Try a group activity.' } }] },
+  }
+  const request = mock.method(globalThis, 'fetch', async () => Response.json(completion))
+  const controller = new AbortController()
+
+  assert.equal(await api.sendAssistantMessage('  Suggest a lesson idea.  ', controller.signal), 'Try a group activity.')
+  const [url, options] = request.mock.calls[0].arguments
+  assert.equal(url, 'http://localhost:5000/submit')
+  assert.equal(options.method, 'POST')
+  assert.equal(options.headers['Content-Type'], 'application/json')
+  assert.deepEqual(JSON.parse(options.body), { text: 'Suggest a lesson idea.' })
+  assert.equal(options.signal, controller.signal)
+})
+
+test('rejects empty AI prompts without sending a request', async () => {
+  const request = mock.method(globalThis, 'fetch', async () => { throw new Error('Unexpected request') })
+  await assert.rejects(api.sendAssistantMessage('  '), /Enter a message/)
+  assert.equal(request.mock.callCount(), 0)
+})
+
+test('rejects malformed or empty AI completions, including the obsolete reply format', async () => {
+  const request = mock.method(globalThis, 'fetch')
+  for (const data of [
+    null,
+    { reply: 'Old format' },
+    { result: {} },
+    { result: { choices: [] } },
+    { result: { choices: [{ message: null }] } },
+    { result: { choices: [{ message: { content: null } }] } },
+    { result: { choices: [{ message: { content: 42 } }] } },
+    { result: { choices: [{ message: { content: '  ' } }] } },
+  ]) {
+    request.mock.mockImplementation(async () => Response.json(data))
+    await assert.rejects(api.sendAssistantMessage('Hello'), /unexpected response/)
+  }
+  request.mock.mockImplementation(async () => new Response('<html>not JSON</html>'))
+  await assert.rejects(api.sendAssistantMessage('Hello'), /unexpected response/)
+})
+
+test('handles JSON and HTML error responses from the AI backend', async () => {
+  const request = mock.method(globalThis, 'fetch', async () => Response.json({ error: 'Try again later.' }, { status: 429 }))
+  await assert.rejects(api.sendAssistantMessage('Hello'), /Try again later/)
+  request.mock.mockImplementation(async () => new Response('<html>Server error</html>', { status: 500 }))
+  await assert.rejects(api.sendAssistantMessage('Hello'), /could not respond right now/)
+})
+
+test('reports an unreachable AI service', async () => {
+  mock.method(globalThis, 'fetch', async () => { throw new TypeError('Failed to fetch') })
+  await assert.rejects(api.sendAssistantMessage('Hello'), /Could not reach the AI service/)
+})
+
+test('preserves AI request cancellation', async () => {
+  const controller = new AbortController()
+  const request = mock.method(globalThis, 'fetch', async (_url, { signal }) => {
+    controller.abort()
+    signal.throwIfAborted()
+  })
+  await assert.rejects(api.sendAssistantMessage('Hello', controller.signal), { name: 'AbortError' })
+  await assert.rejects(api.sendAssistantMessage('Hello', controller.signal), { name: 'AbortError' })
+  assert.equal(request.mock.callCount(), 1)
 })

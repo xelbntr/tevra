@@ -222,7 +222,7 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled }: {
     setError('')
     setLoading(true)
     try {
-      const reply = await sendAssistantMessage(conversation)
+      const reply = await sendAssistantMessage(content)
       setMessages([...conversation, { role: 'assistant' as const, content: reply }].slice(-20))
     } catch (error) {
       setError(error instanceof Error ? error.message : 'The AI could not respond. Please try again.')
