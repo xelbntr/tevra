@@ -26,7 +26,7 @@ export async function sendAssistantMessage(text: string, signal?: AbortSignal): 
   let response: Response
   try {
     response = await fetch(
-      import.meta.env.VITE_AI_CHAT_URL?.trim() || 'http://localhost:5000/submit',
+      (import.meta.env.PROD ? '/submit' : import.meta.env.VITE_AI_CHAT_URL?.trim() || 'http://localhost:5000/submit'),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,7 +86,7 @@ export async function fetchDashboard(signal?: AbortSignal): Promise<DashboardDat
   let response: Response
   try {
     response = await fetch(
-      import.meta.env.VITE_DASHBOARD_URL?.trim() || 'http://localhost:5000/api/dashboard',
+      (import.meta.env.PROD ? '/api/dashboard' : import.meta.env.VITE_DASHBOARD_URL?.trim() || 'http://localhost:5000/api/dashboard'),
       {
         headers: { Authorization: `Bearer ${session.access_token}` },
         cache: 'no-store',

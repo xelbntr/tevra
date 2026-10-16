@@ -1,0 +1,10 @@
+# Deploy source; local build output can override Vercel's backend bundler.
+**/dist/**
+**/node_modules/**
+**/.vercel/**
+.tmp/**
+tmp/**
+temp/**
+**/.env*
+!**/.env.example
+AGENTS.md

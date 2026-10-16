@@ -51,3 +51,13 @@ TypeScript checks code during development and builds; it does not validate exter
 
 Use `.js` extensions for relative imports between backend source modules (for example, `import { askAI } from './coach.js'`). TypeScript resolves these to `.ts` source files and preserves working imports in the compiled Node.js output.
 
+## Vercel deployment
+
+Deploy from the repository root using `vercel.json`. The frontend serves the SPA, while `/api/*` and `/submit` route to the Express backend. Production frontend requests use these same-origin paths.
+
+The backend service runs `npm run typecheck`; Vercel bundles `backend/src/server.ts` and its dependencies. Do not change this to `npm run build` or upload local `dist/` folders: Vercel can select the compiled directory instead of bundling the source, losing the ES module package context and dependency paths. `.vercelignore` excludes generated builds, local environment files, and temporary files from CLI uploads.
+
+Configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `AI_API_KEY` in the deployment environment. Despite its legacy name, `SUPABASE_ANON_KEY` can hold the same publishable key used by the frontend; user access tokens still determine access. Store `AI_API_KEY` as a server-only Secret.
+
+After deploying, verify `/api/v1/health` returns `200` with `status: "ok"`, `/api/dashboard` returns `401` without a session, and `/submit` returns an AI completion. Use `vercel curl` for deployments protected by Vercel Authentication. A deployment marked Ready confirms the build, not runtime health.
+
