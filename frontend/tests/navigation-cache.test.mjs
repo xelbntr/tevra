@@ -154,7 +154,7 @@ test('StrictMode shares initial requests and cached tab switches require no netw
   assert.equal(requests.length, 2)
 })
 
-test('quick actions open the separate reports and grades workflows', async () => {
+test('quick actions open reports and immediately start a new score', async () => {
   await mount()
   const [reportButton, gradingButton] = document.querySelectorAll('.quick-actions button')
   assert.equal(gradingButton.disabled, false)
@@ -162,9 +162,33 @@ test('quick actions open the separate reports and grades workflows', async () =>
   assert.equal(window.location.pathname, '/reports')
   assert.equal(document.querySelector('.reports-page').parentElement.hidden, false)
   await React.act(async () => gradingButton.click())
-  await settleUntil(() => document.querySelector('.grades-table'))
+  await settleUntil(() => document.querySelector('#grade-student-search'))
   assert.equal(window.location.pathname, '/grades')
   assert.equal(document.querySelector('.grades-page').parentElement.hidden, false)
+  assert.ok(gradesButton('Back to grades'))
+  assert.equal(document.querySelector('.grades-table'), null)
+  await React.act(async () => gradesButton('Back to grades').click())
+  assert.ok(document.querySelector('.grades-table'))
+  await navigate('Dashboard')
+  await React.act(async () => gradingButton.click())
+  assert.ok(document.querySelector('#grade-student-search'))
+})
+
+test('quick grading starts a fresh entry after an existing score draft', async () => {
+  await mount()
+  await navigate('Grades')
+  await settleUntil(() => document.querySelector('.grades-table'))
+  assert.ok(gradesButton('Add new score'))
+  await React.act(async () => document.querySelector('.grade-cell.is-recorded').click())
+  await fillInput(document.querySelector('#grade-score'), '25')
+  await navigate('Dashboard')
+  await React.act(async () => document.querySelectorAll('.quick-actions button')[1].click())
+  assert.equal(document.querySelector('#grade-student-search').value, '')
+  assert.equal(document.querySelector('.grades-score-form'), null)
+  await fillInput(document.querySelector('#grade-student-search'), 'Ada')
+  await React.act(async () => document.querySelector('.grades-search-results button').click())
+  assert.equal(document.querySelector('.grades-assessment-row select').value, '')
+  assert.equal(document.querySelector('#grade-score'), null)
 })
 
 const fillInput = (input, value) => React.act(async () => {

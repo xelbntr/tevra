@@ -74,6 +74,7 @@ function Dashboard({ email }: { email: string | undefined }) {
   const [notice, setNotice] = useState('')
   const [signingOut, setSigningOut] = useState(false)
   const [dataRevision, setDataRevision] = useState(0)
+  const [newScoreRequest, setNewScoreRequest] = useState(0)
   const [gradesOpened, setGradesOpened] = useState(() => window.location.pathname.replace(/\/+$/, '') === '/grades')
 
   useEffect(() => {
@@ -199,6 +200,7 @@ function Dashboard({ email }: { email: string | undefined }) {
                   </button>
                   <button className="action-card" type="button" onClick={() => {
                     window.history.pushState({}, '', '/grades')
+                    setNewScoreRequest(value => value + 1)
                     setGradesOpened(true)
                     setPathname('/grades')
                   }}>
@@ -211,7 +213,7 @@ function Dashboard({ email }: { email: string | undefined }) {
             </div>
             <div hidden={!isAttendance}><AttendancePage key={dataRevision} /></div>
             <div hidden={!isReports}><ReportsPage key={dataRevision} /></div>
-            <div hidden={!isGrades}>{(isGrades || gradesOpened) && <GradesPage revision={dataRevision} onRecordsChanged={() => setDataRevision(value => value + 1)} />}</div>
+            <div hidden={!isGrades}>{(isGrades || gradesOpened) && <GradesPage revision={dataRevision} newScoreRequest={newScoreRequest} onRecordsChanged={() => setDataRevision(value => value + 1)} />}</div>
             <div hidden={!isAssistant}>
               <AssistantChat
                 initialPrompt={assistantPrompt}

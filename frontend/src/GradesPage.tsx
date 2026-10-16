@@ -5,7 +5,11 @@ import type { Assessment, GradesData, GradeStudent } from './api'
 import { GradesSkeleton } from './LoadingSkeletons'
 import './GradesPage.css'
 
-export function GradesPage({ revision = 0, onRecordsChanged }: { revision?: number; onRecordsChanged: () => void }) {
+export function GradesPage({ revision = 0, newScoreRequest = 0, onRecordsChanged }: {
+  revision?: number
+  newScoreRequest?: number
+  onRecordsChanged: () => void
+}) {
   const [data, setData] = useState<GradesData | null>(null)
   const [loading, setLoading] = useState(true)
   const [retry, setRetry] = useState(0)
@@ -14,6 +18,7 @@ export function GradesPage({ revision = 0, onRecordsChanged }: { revision?: numb
   const [classId, setClassId] = useState('')
   const [filter, setFilter] = useState('')
   const [entering, setEntering] = useState(false)
+  const [handledNewScoreRequest, setHandledNewScoreRequest] = useState(0)
   const [query, setQuery] = useState('')
   const [studentId, setStudentId] = useState('')
   const [formClassId, setFormClassId] = useState('')
@@ -60,6 +65,12 @@ export function GradesPage({ revision = 0, onRecordsChanged }: { revision?: numb
     setQuery('')
     setError('')
     setNotice('')
+  }
+
+  // Consume each quick action once, after classes load, even when this page is already mounted.
+  if (newScoreRequest !== handledNewScoreRequest && data?.classes.length) {
+    setHandledNewScoreRequest(newScoreRequest)
+    openEntry()
   }
 
   function chooseAssessment(id: string) {
