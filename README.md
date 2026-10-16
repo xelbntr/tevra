@@ -53,6 +53,8 @@ Use `.js` extensions for relative imports between backend source modules (for ex
 
 ## Vercel deployment
 
+For backend startup errors, missing initialization logs, or `FUNCTION_INVOCATION_FAILED`, see the [2026-10-16 incident and verified fix](docs/troubleshooting/vercel-backend-startup.md).
+
 Deploy from the repository root using `vercel.json`. The frontend serves the SPA, while `/api/*` and `/submit` route to the Express backend. Production frontend requests use these same-origin paths.
 
 The backend service runs `npm run typecheck`; Vercel bundles `backend/src/server.ts` and its dependencies. Do not change this to `npm run build` or upload local `dist/` folders: Vercel can select the compiled directory instead of bundling the source, losing the ES module package context and dependency paths. `.vercelignore` excludes generated builds, local environment files, and temporary files from CLI uploads.
