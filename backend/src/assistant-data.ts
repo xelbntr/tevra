@@ -47,7 +47,8 @@ export async function readClass(context: Context, classId: string) {
     allRows(after => {
       const q = db.from('enrollments').select('id,status,student:students(id,full_name,student_number)', { count: 'exact' })
         .eq('class_id', classId).order('id').limit(500)
-      return after ? q.gt('id', after) : q
+      return (after ? q.gt('id', after) : q)
+        .returns<{ id: string; status: string; student: { id: string; full_name: string; student_number: string } | null }[]>()
     }),
     allRows(after => {
       const q = db.from('assessments').select('id,title,assessment_type,max_score,weight,due_date', { count: 'exact' })
@@ -66,6 +67,62 @@ export async function readClass(context: Context, classId: string) {
     }),
   ])
   return { class: selectedClass, students, assessments, grades, attendance }
+}
+
+// Calculate over complete records on the server; the model only needs aggregates
+// for an overview, not thousands of individual rows and repeated UUIDs.
+export async function readClassSummary(context: Context, classId: string) {
+  const records = await readClass(context, classId)
+  const maxima = new Map(records.assessments.map(assessment => [assessment.id, assessment.max_score]))
+  let gradeTotal = 0
+  let recordedGrades = 0
+  for (const grade of records.grades) {
+    if (grade.score === null) continue
+    const maximum = maxima.get(grade.assessment_id)
+    if (!Number.isFinite(grade.score) || grade.score < 0 || typeof maximum !== 'number' || !Number.isFinite(maximum) || maximum <= 0) {
+      throw new Error('Could not calculate a complete class grade summary.')
+    }
+    gradeTotal += grade.score / maximum * 100
+    recordedGrades++
+  }
+  if (!Number.isFinite(gradeTotal)) throw new Error('Could not calculate a complete class grade summary.')
+  const attendance = { present: 0, late: 0, excused: 0, absent: 0 }
+  for (const entry of records.attendance) {
+    if (!Object.hasOwn(attendance, entry.status)) throw new Error('Could not calculate a complete class attendance summary.')
+    attendance[entry.status as keyof typeof attendance]++
+  }
+  return {
+    class: records.class,
+    students: records.students.length,
+    assessments: records.assessments.length,
+    grades: {
+      recorded: recordedGrades,
+      average_percentage: recordedGrades ? Math.round(gradeTotal / recordedGrades * 10) / 10 : null,
+      basis: 'Unweighted mean of recorded assessment percentages; missing scores are excluded.',
+    },
+    attendance: {
+      ...attendance, recorded: records.attendance.length,
+      attendance_rate: records.attendance.length
+        ? Math.round((attendance.present + attendance.late) / records.attendance.length * 1000) / 10 : null,
+      basis: 'Present and late count as attended; dates with no records are excluded.',
+    },
+  }
+}
+
+export async function readStudentRecords(context: Context, classId: string, student: string) {
+  const records = await readClass(context, classId)
+  const name = student.trim().toLocaleLowerCase()
+  const students = records.students.filter(row => row.student?.full_name?.toLocaleLowerCase() === name
+    || row.student?.student_number?.toLocaleLowerCase() === name)
+  if (students.length !== 1) throw new Error('Provide one exact student name or student number in this class. Use the class summary for an overview.')
+  const enrollmentId = students[0]!.id
+  const grades = records.grades.filter(row => row.enrollment_id === enrollmentId)
+  const assessmentIds = new Set(grades.map(row => row.assessment_id))
+  return {
+    class: records.class, students,
+    assessments: records.assessments.filter(row => assessmentIds.has(row.id)), grades,
+    attendance: records.attendance.filter(row => row.enrollment_id === enrollmentId),
+  }
 }
 
 export async function prepareEdit(context: Context, input: Edit) {

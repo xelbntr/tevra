@@ -117,7 +117,10 @@ export async function sendAssistantChat(text: string, history: AssistantMessage[
     const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
       ? data.error
       : 'The AI could not respond right now. Please try again.'
-    throw new Error(message)
+    const reference = data && typeof data === 'object' && 'requestId' in data
+      && typeof data.requestId === 'string' && /^[\da-f-]{36}$/i.test(data.requestId)
+      ? ` (Reference: ${data.requestId})` : ''
+    throw new Error(message + reference)
   }
   const result = data && typeof data === 'object' && 'result' in data ? data.result : null
   const choices = result && typeof result === 'object' && 'choices' in result ? result.choices : null
@@ -153,7 +156,7 @@ export async function confirmAssistantEdit(token: string): Promise<string> {
   const data = await response.json().catch(() => null)
   if (response.status === 401) throw new AuthenticationError()
   if (!response.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'Could not save the change.')
-  if (!sessionCache.accepts(version, session.user.id)) throw new DOMException('Session changed', 'AbortError')
+  if (!sessionCache.accepts(version)) throw new DOMException('Session changed', 'AbortError')
   sessionCache.clear()
   if (typeof data?.message !== 'string') throw new Error('Unexpected save response. Check the record before retrying.')
   return data.message

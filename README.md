@@ -100,3 +100,9 @@ The dashboard's **Quick Grading** shortcut is marked **Coming soon**. General st
 Tevra uses a React and Vite frontend with an Express backend, both written in TypeScript. Supabase provides authentication and classroom data access, while Groq powers the AI assistant and report narratives. The backend verifies user sessions and uses the signed-in user's access token for database requests so existing data access policies remain in effect. Relevant queried records are sent to the AI provider to generate answers and report drafts.
 
 For implementation details, see the [frontend guide](frontend/README.md), [attendance API notes](backend/ATTENDANCE.md), [student report documentation](backend/REPORTS.md), and [deployment troubleshooting guide](docs/troubleshooting/vercel-backend-startup.md).
+
+### Troubleshooting assistant requests
+
+Assistant errors display a reference that matches the backend's diagnostic entry. Logs include the failure stage, message, stack frames, underlying cause, and available provider status/code and request ID. AI failures also include the model, lookup round, and input character count. Credentials and provider-generated error payloads are excluded. During local development, entries are also saved in `backend/logs/assistant-errors.log`; production uses the server console.
+
+Class overviews use statistics calculated from complete accessible records on the server, keeping individual student rows out of the AI request. Detailed record lookups can be limited to an exact student name or number. If a raw result is too large, the assistant is directed to use a class summary or an individual lookup instead.

@@ -243,6 +243,16 @@ test('rejects empty AI prompts without sending a request', async () => {
   assert.equal(request.mock.callCount(), 0)
 })
 
+test('assistant errors show the safe server message and its diagnostic reference', async () => {
+  const requestId = '00000000-0000-4000-8000-000000000001'
+  mock.method(globalThis, 'fetch', async () => Response.json({
+    error: 'The server could not connect to the AI service. Please try again shortly.', requestId,
+  }, { status: 503 }))
+  await assert.rejects(api.sendAssistantChat('test'), {
+    message: `The server could not connect to the AI service. Please try again shortly. (Reference: ${requestId})`,
+  })
+})
+
 test('assistant requires a session and sends follow-up context', async () => {
   const request = mock.method(globalThis, 'fetch', async () => Response.json({ result: { choices: [{ message: { content: 'Ada has 85.' } }] }, proposals: [] }))
   const history = [{ role: 'user', content: 'Find Ada in Math' }, { role: 'assistant', content: 'Found Ada.' }]

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, MouseEvent, SVGProps } from 'react'
+import Markdown from 'react-markdown'
+import type { Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { AuthGate } from './AuthGate'
 import { AccountMenu } from './AccountMenu'
 import { AttendancePage } from './AttendancePage'
@@ -123,8 +126,7 @@ function Dashboard({ email }: { email: string | undefined }) {
       <section className={`dashboard-shell${isDashboard ? ' dashboard-home' : ''}`} aria-label="Tevra dashboard">
         <header className="topbar">
           <a className="brand-mark" href="/dashboard" aria-label="Tevra home" onClick={(event) => navigate(event, '/dashboard')}>
-            <span className="brand-symbol">T</span>
-            <span className="brand-name">tevra</span>
+            <img className="brand-icon" src="/tevra-app-icon.svg" alt="" />
           </a>
           <AccountMenu email={email} signingOut={signingOut} onSignOut={signOut} />
         </header>
@@ -214,6 +216,14 @@ function Dashboard({ email }: { email: string | undefined }) {
   )
 }
 
+const assistantMarkdownComponents: Components = {
+  table: ({ children }) => (
+    <div className="chat-table-wrapper" role="region" aria-label="Response table" tabIndex={0}>
+      <table>{children}</table>
+    </div>
+  ),
+}
+
 function AssistantChat({ initialPrompt, onInitialPromptHandled, onRecordsChanged }: {
   initialPrompt: string
   onInitialPromptHandled: () => void
@@ -297,7 +307,13 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled, onRecordsChanged
         {messages.map((message, index) => (
           <article className={`chat-message chat-message-${message.role}`} key={`${index}-${message.role}`}>
             <span className="chat-speaker">{message.role === 'user' ? 'You' : 'Tevra AI'}</span>
-            <p>{message.content}</p>
+            {message.role === 'assistant' ? (
+              <div className="chat-markdown">
+                <Markdown remarkPlugins={[remarkGfm]} components={assistantMarkdownComponents} skipHtml>
+                  {message.content}
+                </Markdown>
+              </div>
+            ) : <p className="chat-user-content">{message.content}</p>}
           </article>
         ))}
         {loading && <p className="chat-pending" role="status">Tevra AI is thinking…</p>}

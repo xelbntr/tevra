@@ -279,7 +279,7 @@ test('returns validated report and exact normalized percentages; sends only quer
 test('returns null for no visible enrollment and skips history and AI requests', async () => {
   visible = false
   assert.equal(await runReport(), null)
-  assert.equal(requests.length, 2) // authenticate and lookup only
+  assert.equal(requests.length, 3) // claims verification, current user validation, and enrollment lookup only
   assert.equal(aiRequests().length, 0)
 })
 

@@ -4,6 +4,7 @@ import { generateKeyPairSync, sign } from 'node:crypto'
 import express from 'express'
 import type { Server } from 'node:http'
 import { once } from 'node:events'
+import { APIError, APIConnectionError, APIConnectionTimeoutError } from 'groq-sdk'
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const teacher = id(1), classId = id(2), enrollmentId = id(3), gradeId = id(4), assessmentId = id(5)
@@ -15,6 +16,7 @@ const jwt = `${header}.${payload}.${sign('sha256', Buffer.from(`${header}.${payl
 const originalFetch = globalThis.fetch
 let requests: Request[], visible: boolean, score: number, attendance: { id: string; status: string } | null, loseRace: boolean
 let replies: unknown[]
+let rosterSize = 1
 let authenticate: typeof import('../src/auth.js').authenticate
 let data: typeof import('../src/assistant-data.js')
 let proposals: typeof import('../src/assistant-proposals.js')
@@ -31,6 +33,7 @@ before(async () => {
     requests.push(request.clone())
     const url = new URL(request.url)
     if (url.pathname.endsWith('/.well-known/jwks.json')) return Response.json({ keys: [jwk] })
+    if (url.pathname === '/auth/v1/user') return Response.json({ id: teacher })
     if (url.hostname === 'api.groq.com') {
       assert.ok(replies.length, 'unexpected additional model request')
       return Response.json({ id: 'test', choices: [{ message: replies.shift(), finish_reason: 'stop' }] })
@@ -68,6 +71,17 @@ before(async () => {
       rows = url.searchParams.has('id') ? [] : [{ id: gradeId, score, enrollment_id: enrollmentId, assessment_id: assessmentId }]
     }
     if (table === 'attendance') assert.equal(url.searchParams.get('enrollment.class_id'), `eq.${classId}`)
+    if (rosterSize > 1) {
+      if (table === 'enrollments') rows = Array.from({ length: rosterSize }, (_, n) => ({
+        id: id(1000 + n), status: 'active', student: { id: id(2000 + n), full_name: `Student ${n}`, student_number: `S${n}` },
+      }))
+      if (table === 'grades') rows = Array.from({ length: rosterSize }, (_, n) => ({
+        id: id(3000 + n), enrollment_id: id(1000 + n), assessment_id: assessmentId, score: 80,
+      }))
+      if (table === 'attendance') rows = Array.from({ length: rosterSize }, (_, n) => ({
+        id: id(4000 + n), enrollment_id: id(1000 + n), attendance_date: '2026-10-16', status: n % 2 ? 'absent' : 'late',
+      }))
+    }
     assert.ok(select, 'all queries specify their columns')
     return Response.json(rows, { headers: { 'Content-Range': `0-${Math.max(0, rows.length - 1)}/${rows.length}` } })
   }
@@ -86,7 +100,7 @@ before(async () => {
 })
 
 beforeEach(async () => {
-  requests = []; visible = true; score = 80; attendance = { id: id(6), status: 'absent' }; loseRace = false; replies = []
+  requests = []; visible = true; score = 80; attendance = { id: id(6), status: 'absent' }; loseRace = false; replies = []; rosterSize = 1
   context = await authenticate(jwt)
 })
 after(async () => {
@@ -106,6 +120,43 @@ test('reads class records with explicit teacher and class scoping', async () => 
   const before = requests.length
   await assert.rejects(data.readClass(context, classId), /Class not found/)
   assert.equal(requests.length, before + 1, 'inaccessible classes cannot trigger child reads')
+})
+
+test('large-class overview sends exact compact statistics instead of raw student records', async () => {
+  rosterSize = 200
+  const summary = await data.readClassSummary(context, classId)
+  assert.equal(summary.students, 200)
+  assert.equal(summary.grades.recorded, 200)
+  assert.equal(summary.grades.average_percentage, 80)
+  assert.equal(summary.attendance.recorded, 200)
+  assert.equal(summary.attendance.late, 100)
+  assert.equal(summary.attendance.absent, 100)
+  assert.equal(summary.attendance.attendance_rate, 50)
+  assert.ok(JSON.stringify(summary).length < 1200)
+  replies = [call('list_classes', {}), call('read_class_summary', { class_id: classId }), { role: 'assistant', content: 'Your class averages 80%, with 50% recorded attendance.' }]
+  await askAI({ text: 'hows my class doing?', history: [] }, context)
+  const modelCalls = requests.filter(r => new URL(r.url).hostname === 'api.groq.com')
+  const body = await modelCalls.at(-1)!.clone().json() as { messages: { role: string; content: string }[] }
+  const output = JSON.parse(body.messages.at(-1)!.content)
+  assert.equal(output.grades.average_percentage, 80)
+  assert.equal(output.attendance.attendance_rate, 50)
+  assert.ok(!JSON.stringify(body).includes('Student 199'))
+  assert.equal(writes().length, 0)
+})
+
+test('oversized raw records direct the model to summaries and individual lookups stay scoped', async () => {
+  rosterSize = 200
+  const student = await data.readStudentRecords(context, classId, 'S199')
+  assert.equal(student.students.length, 1)
+  assert.equal(student.grades.length, 1)
+  assert.equal(student.attendance.length, 1)
+  assert.equal(student.students[0]!.student!.full_name, 'Student 199')
+  replies = [call('read_class_records', { class_id: classId }), call('read_class_summary', { class_id: classId }), { role: 'assistant', content: 'The average is 80%.' }]
+  await askAI({ text: 'How is my class doing?', history: [] }, context)
+  const modelCalls = requests.filter(r => new URL(r.url).hostname === 'api.groq.com')
+  const second = await modelCalls[1]!.clone().json() as { messages: { role: string; content: string }[] }
+  assert.match(second.messages.at(-1)!.content, /Use read_class_summary/)
+  assert.ok(!JSON.stringify(second).includes('Student 199'))
 })
 
 test('only allowed edits are accepted and scores must fit the assessment', async () => {
@@ -162,6 +213,85 @@ test('attendance supports corrections and recording an unmarked date without ove
 })
 
 const call = (name: string, args: unknown) => ({ role: 'assistant', content: null, tool_calls: [{ id: `call-${name}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }] })
+
+test('provider failures include useful correlated diagnostics without leaking generated text or secrets', async t => {
+  const { groq } = await import('../src/ai.js')
+  const error = APIError.generate(400, { error: {
+    message: 'Failed to call a function. Please adjust your prompt.',
+    code: 'tool_use_failed', type: 'invalid_request_error', failed_generation: 'PRIVATE STUDENT RECORDS',
+  } }, undefined, new Headers({ 'x-request-id': 'groq-diagnostic-id' }))
+  t.mock.method(groq.chat.completions, 'create', async () => { throw error })
+  const log = t.mock.method(console, 'error', () => {})
+  const response = await originalFetch(endpoint + '/submit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+    body: JSON.stringify({ text: 'PRIVATE PROMPT' }),
+  })
+  const body = await response.json() as { error: string; requestId: string }
+  assert.equal(response.status, 502)
+  assert.equal(response.headers.get('x-request-id'), body.requestId)
+  assert.equal(response.headers.get('cache-control'), 'no-store')
+  const entry = JSON.parse(log.mock.calls[0]!.arguments[1] as string)
+  assert.equal(entry.requestId, body.requestId)
+  assert.equal(entry.stage, 'chat')
+  assert.equal(entry.error.stage, 'model')
+  assert.equal(entry.error.round, 1)
+  assert.equal(entry.error.model, 'openai/gpt-oss-120b')
+  assert.equal(entry.error.cause.status, 400)
+  assert.equal(entry.error.cause.code, 'tool_use_failed')
+  assert.equal(entry.error.cause.providerRequestId, 'groq-diagnostic-id')
+  assert.match(entry.error.cause.message, /Failed to call a function/)
+  assert.match(entry.error.cause.stack, /at /)
+  const serialized = JSON.stringify(entry)
+  for (const secret of ['PRIVATE PROMPT', 'PRIVATE STUDENT RECORDS', jwt, process.env.AI_API_KEY!]) {
+    assert.ok(!serialized.includes(secret))
+  }
+  assert.ok(!JSON.stringify(body).includes('tool_use_failed'))
+})
+
+test('network, timeout, usage and provider credential failures get distinct safe responses', async t => {
+  const { groq } = await import('../src/ai.js')
+  const { assistantErrorResponse } = await import('../src/assistant-errors.js')
+  const network = new APIConnectionError({ cause: Object.assign(new Error('DNS lookup failed'), { code: 'ENOTFOUND' }) })
+  const create = t.mock.method(groq.chat.completions, 'create', async () => { throw network })
+  const log = t.mock.method(console, 'error', () => {})
+  const response = await originalFetch(endpoint + '/submit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+    body: JSON.stringify({ text: 'test' }),
+  })
+  assert.equal(response.status, 503)
+  assert.match((await response.json() as { error: string }).error, /could not connect/)
+  assert.equal(JSON.parse(log.mock.calls[0]!.arguments[1] as string).error.cause.cause.code, 'ENOTFOUND')
+  for (const [error, status, message] of [
+    [new APIConnectionTimeoutError(), 504, /too long/],
+    [APIError.generate(429, { error: { message: 'Rate limited' } }, undefined, new Headers()), 429, /usage limit/],
+    [APIError.generate(401, { error: { message: 'Bad key' } }, undefined, new Headers()), 503, /configured correctly/],
+    [APIError.generate(413, { error: { message: 'Request too large' } }, undefined, new Headers()), 422, /too much data/],
+    [APIError.generate(503, {}, undefined, new Headers()), 503, /temporarily unavailable/],
+  ] as const) {
+    create.mock.mockImplementation(async () => { throw error })
+    await assert.rejects(askAI({ text: 'test', history: [] }, context), failure => {
+      const result = assistantErrorResponse(failure)
+      assert.equal(result.status, status)
+      assert.match(result.message, message)
+      return true
+    })
+  }
+})
+
+test('logs nested error messages and stack frames while redacting credentials', async t => {
+  const { logAssistantFailure } = await import('../src/assistant-errors.js')
+  const log = t.mock.method(console, 'error', () => {})
+  const error = new Error(`Connection failed with Bearer ${jwt}`, {
+    cause: new Error(`Configured key: ${process.env.AI_API_KEY}`),
+  })
+  logAssistantFailure(error, { requestId: 'diagnostic', stage: 'chat' })
+  const serialized = log.mock.calls[0]!.arguments[1] as string
+  assert.match(serialized, /Connection failed/)
+  assert.match(serialized, /Configured key/)
+  assert.match(serialized, /REDACTED/)
+  assert.ok(!serialized.includes(jwt))
+  assert.ok(!serialized.includes(process.env.AI_API_KEY!))
+})
 test('model performs live lookups and returns a signed edit preview without saving', async () => {
   replies = [call('list_classes', {}), call('read_class_records', { class_id: classId }), call('propose_edit', gradeEdit())]
   const response = await askAI({ text: 'Change Ada Quiz 1 in Math to 85', history: [] }, context)
