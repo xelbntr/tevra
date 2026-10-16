@@ -95,6 +95,50 @@ export function AttendanceSkeleton({ showFilters = false }: { showFilters?: bool
   )
 }
 
+export function GradesSkeleton() {
+  return (
+    <LoadingState label="Loading grades…">
+      <div className="grades-skeleton">
+        <div className="grades-card grades-toolbar">
+          {[0, 1].map(index => (
+            <div className="skeleton-stack" key={index}>
+              <SkeletonBlock className="skeleton-detail" />
+              <SkeletonBlock className="skeleton-input" />
+            </div>
+          ))}
+          <SkeletonBlock className="skeleton-input grades-skeleton-action" />
+        </div>
+        <div className="grades-card grades-book">
+          <div className="grades-book-heading">
+            <SkeletonBlock className="skeleton-title" />
+            <SkeletonBlock className="skeleton-detail grades-skeleton-count" />
+          </div>
+          <div className="grades-table-scroll">
+            <div className="grades-skeleton-row grades-skeleton-table-heading">
+              {[0, 1, 2, 3].map(index => (
+                <div className="skeleton-stack" key={index}>
+                  <SkeletonBlock className="skeleton-title" />
+                  <SkeletonBlock className="skeleton-detail" />
+                </div>
+              ))}
+            </div>
+            {[0, 1, 2, 3, 4, 5].map(index => (
+              <div className="grades-skeleton-row" key={index}>
+                <div className="skeleton-stack">
+                  <SkeletonBlock className="skeleton-title" />
+                  <SkeletonBlock className="skeleton-detail" />
+                </div>
+                {[0, 1, 2].map(column => <SkeletonBlock className="grades-skeleton-score" key={column} />)}
+              </div>
+            ))}
+          </div>
+          <div className="grades-footnote"><SkeletonBlock className="skeleton-detail" /></div>
+        </div>
+      </div>
+    </LoadingState>
+  )
+}
+
 export function LoadingSelect({ loading, children }: { loading: boolean; children: ReactNode }) {
   return (
     <div className={`loading-select${loading ? ' is-loading' : ''}`}>

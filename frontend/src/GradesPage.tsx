@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createAssessment, fetchGrades, saveGrade } from './api'
 import type { Assessment, GradesData, GradeStudent } from './api'
+import { GradesSkeleton } from './LoadingSkeletons'
 import './GradesPage.css'
 
 export function GradesPage({ revision = 0, onRecordsChanged }: { revision?: number; onRecordsChanged: () => void }) {
@@ -96,7 +97,7 @@ export function GradesPage({ revision = 0, onRecordsChanged }: { revision?: numb
   return <section className="grades-page" aria-label="Grades">
     <div className="grades-heading">
       <p>{entering ? 'Find a student and record their score.' : 'View your class scores. Select a score to add or edit it.'}</p>
-      <button className={entering ? 'secondary-button' : 'primary-button'} type="button" disabled={saving || !data || !data.classes.length}
+      <button className={entering ? 'secondary-button' : 'primary-button'} type="button" disabled={loading || saving || !data || !data.classes.length}
         onClick={() => entering ? (setEntering(false), setAddingAssessment(false), setError('')) : openEntry()}>
         {entering ? 'Back to grades' : 'Add new score'}
       </button>
@@ -105,10 +106,10 @@ export function GradesPage({ revision = 0, onRecordsChanged }: { revision?: numb
     {error && <div className="grades-message error-message" role="alert"><p>{error}</p>
       {!entering && <button className="secondary-button" type="button" onClick={() => { setLoading(true); setError(''); setRetry(value => value + 1) }}>Try again</button>}
     </div>}
-    {loading && <p className="grades-message" role="status">Loading grades…</p>}
+    {loading && <GradesSkeleton />}
     {!loading && data?.classes.length === 0 && <p className="grades-message">Your account has no classes yet.</p>}
 
-    {data && data.classes.length > 0 && !entering && <>
+    {!loading && data && data.classes.length > 0 && !entering && <>
       <div className="grades-card grades-toolbar">
         <label>Class<select value={selectedClassId} onChange={event => { setClassId(event.target.value); setAddingAssessment(false) }}>
           {data.classes.map(item => <option key={item.id} value={item.id}>{item.name} · {item.course_code} · {item.academic_year} / {item.semester}</option>)}
@@ -139,7 +140,7 @@ export function GradesPage({ revision = 0, onRecordsChanged }: { revision?: numb
       </div>
     </>}
 
-    {data && entering && <div className="grades-entry">
+    {!loading && data && entering && <div className="grades-entry">
       {!enrollment ? <>
         <div className="grades-card grades-search">
           <label className="sr-only" htmlFor="grade-student-search">Search student</label>
