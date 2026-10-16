@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { getSupabase, supabase, supabaseConfigurationError } from './supabase'
+import { sessionCache } from './sessionCache'
 
 export function AuthGate({ children }: { children: (session: Session) => ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
@@ -19,6 +20,7 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
     // INITIAL_SESSION restores saved login; later events include token refreshes
     // and sign-outs, including changes made in another browser tab.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      sessionCache.setOwner(nextSession?.user.id ?? null)
       setSession(nextSession)
       setInitializing(false)
     })

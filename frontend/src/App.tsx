@@ -158,7 +158,9 @@ function Dashboard({ email }: { email: string | undefined }) {
               {isDashboard && <span className="today-pill">Overview</span>}
             </div>
 
-            {isDashboard ? (
+            {/* Keep data views mounted: switching tabs preserves selections and renders
+                loaded content immediately. Their shared requests are deduplicated. */}
+            <div hidden={!isDashboard}>
               <>
                 <form className="ask-bar" onSubmit={askAssistant}>
                   <label className="sr-only" htmlFor="ask-ai">Ask AI</label>
@@ -186,23 +188,22 @@ function Dashboard({ email }: { email: string | undefined }) {
                   </button>
                 </section>
               </>
-            ) : isAttendance ? (
-              <AttendancePage />
-            ) : isAssistant ? (
+            </div>
+            <div hidden={!isAttendance}><AttendancePage /></div>
+            <div hidden={!isGradingReports}><GradingReports /></div>
+            {isAssistant ? (
               <AssistantChat
                 initialPrompt={assistantPrompt}
                 onInitialPromptHandled={() => setAssistantPrompt('')}
               />
-            ) : isGradingReports ? (
-              <GradingReports />
-            ) : (
+            ) : !isDashboard && !isAttendance && !isGradingReports ? (
               <section className="coming-soon" aria-live="polite">
                 <div className="coming-soon-icon"><Icon name={currentPage?.icon ?? 'book'} size={25} /></div>
                 <h2>{currentPage ? `${currentPage.label} is coming soon` : 'This page is coming soon'}</h2>
                 <p>We’re getting this part of Learnly ready. Check back soon.</p>
                 <a href="/dashboard" onClick={(event) => navigate(event, '/dashboard')}>Back to dashboard</a>
               </section>
-            )}
+            ) : null}
           </div>
         </div>
         {notice && <div className="notice" role="status">{notice}</div>}

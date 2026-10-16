@@ -105,6 +105,14 @@ test('frontend uses the running backend submit contract', { timeout: 15_000 }, a
   assert.equal(dashboard.status, 401)
   assert.deepEqual(await dashboard.json(), { error: 'Please sign in' })
 
+  const roster = await originalFetch(`${backendUrl}/api/attendance/roster?class_id=invalid`)
+  assert.equal(roster.status, 401)
+  assert.equal(roster.headers.get('cache-control'), 'no-store')
+  const invalidRoster = await originalFetch(`${backendUrl}/api/attendance/roster?class_id=invalid`, {
+    headers: { Authorization: 'Bearer test-token' },
+  })
+  assert.equal(invalidRoster.status, 400)
+
   for (const path of ['/api/reports', '/api/reports/download']) {
     const report = await originalFetch(`${backendUrl}${path}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',

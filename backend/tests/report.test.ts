@@ -12,7 +12,10 @@ const studentId = uuid(1)
 const classId = uuid(2)
 const enrollmentId = uuid(3)
 const lecturerId = uuid(4)
-const accessToken = 'test-access-token'
+const accessToken = [
+  { alg: 'HS256', typ: 'JWT' },
+  { sub: lecturerId, role: 'authenticated', aud: 'authenticated', iss: 'https://supabase.test/auth/v1', exp: 4_000_000_000 },
+].map(value => Buffer.from(JSON.stringify(value)).toString('base64url')).join('.') + '.c2lnbmF0dXJl'
 
 const enrollment = {
   id: enrollmentId, status: 'active',

@@ -10,7 +10,21 @@ if (!supabaseUrl || !supabaseKey) {
 
 export class AuthenticationError extends Error {}
 
+// This client only verifies explicitly supplied tokens. Keeping it alive lets
+// Supabase reuse its public signing-key cache without sharing user sessions.
+const verifier = createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+})
+
 export async function authenticate(accessToken: string) {
+  const { data, error: authError } = await verifier.auth.getClaims(accessToken)
+  const claims = data?.claims
+  if (authError || !claims?.sub || claims.role !== 'authenticated'
+    || claims.iss !== `${supabaseUrl!.replace(/\/$/, '')}/auth/v1`
+    || !(Array.isArray(claims.aud) ? claims.aud.includes('authenticated') : claims.aud === 'authenticated')) {
+    throw new AuthenticationError('Invalid or expired session')
+  }
+
   const db = createClient(supabaseUrl!, supabaseKey!, {
     global: {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -22,10 +36,5 @@ export async function authenticate(accessToken: string) {
     },
   })
 
-  const { data: { user }, error: authError } = await db.auth.getUser(accessToken)
-  if (authError || !user) {
-    throw new AuthenticationError('Invalid or expired session')
-  }
-
-  return { db, user }
+  return { db, user: { id: claims.sub } }
 }
