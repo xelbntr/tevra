@@ -12,6 +12,8 @@ export type DashboardClass = {
 export type DashboardData = {
   classes: DashboardClass[]
   totalStudents: number
+  averageGrade?: number | null
+  attendanceRate?: number | null
 }
 
 export type ClassStudent = {
@@ -122,6 +124,9 @@ function isDashboardData(value: unknown): value is DashboardData {
   if (!value || typeof value !== 'object') return false
   const data = value as Record<string, unknown>
   return Number.isSafeInteger(data.totalStudents) && (data.totalStudents as number) >= 0
+    && ['averageGrade', 'attendanceRate'].every(key => data[key] === undefined || data[key] === null
+      || (typeof data[key] === 'number' && Number.isFinite(data[key]) && data[key] >= 0
+        && (key !== 'attendanceRate' || data[key] <= 100)))
     && Array.isArray(data.classes) && data.classes.every((item: unknown) => {
       if (!item || typeof item !== 'object') return false
       const row = item as Record<string, unknown>

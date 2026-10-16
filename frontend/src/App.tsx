@@ -118,7 +118,7 @@ function Dashboard({ email }: { email: string | undefined }) {
 
   return (
     <main className="app-frame">
-      <section className="dashboard-shell" aria-label="Tevra dashboard">
+      <section className={`dashboard-shell${isDashboard ? ' dashboard-home' : ''}`} aria-label="Tevra dashboard">
         <header className="topbar">
           <a className="brand-mark" href="/dashboard" aria-label="Tevra home" onClick={(event) => navigate(event, '/dashboard')}>
             <span className="brand-symbol">T</span>
@@ -177,14 +177,14 @@ function Dashboard({ email }: { email: string | undefined }) {
 
                 <section className="quick-actions" aria-label="Quick actions">
                   <button className="action-card" type="button" onClick={() => showNotice('Report generation is coming soon.')}>
-                    <span className="action-icon"><Icon name="report" size={17} /></span>
+                    <span className="action-icon"><img src="/dashboard/report.svg" alt="" /></span>
                     <span className="action-label">Generate Report</span>
-                    <span className="action-arrow"><Icon name="arrow" size={15} /></span>
+                    <span className="action-arrow"><img src="/dashboard/arrow.svg" alt="" /></span>
                   </button>
                   <button className="action-card" type="button" onClick={() => showNotice('Quick grading is coming soon.')}>
-                    <span className="action-icon"><Icon name="paper" size={17} /></span>
+                    <span className="action-icon"><img src="/dashboard/grading.svg" alt="" /></span>
                     <span className="action-label">Quick Grading</span>
-                    <span className="action-arrow"><Icon name="arrow" size={15} /></span>
+                    <span className="action-arrow"><img src="/dashboard/arrow.svg" alt="" /></span>
                   </button>
                 </section>
               </>
@@ -332,16 +332,18 @@ function DashboardRequest({ onRetry }: { onRetry: () => void }) {
   if (!dashboard) return <p role="status">Loading your dashboard…</p>
 
   const metrics = [
-    { label: 'Students', value: dashboard.totalStudents, icon: 'person' },
+    { label: 'Students', value: dashboard.totalStudents, icon: 'person', asset: '/dashboard/students.svg' },
     { label: 'Courses', value: dashboard.classes.length, icon: 'book' },
-  ] satisfies { label: string; value: number; icon: IconName }[]
+    { label: 'Average Grade', value: dashboard.averageGrade == null ? '—' : dashboard.averageGrade.toFixed(1), icon: 'report', asset: '/dashboard/grade.svg' },
+    { label: 'Attendance Rate', value: dashboard.attendanceRate == null ? '—' : `${dashboard.attendanceRate}%`, icon: 'calendar', asset: '/dashboard/attendance.svg' },
+  ] satisfies { label: string; value: number | string; icon: IconName; asset?: string }[]
 
   return (
     <>
       <section className="metrics-grid" aria-label="Class statistics">
-        {metrics.map((metric, index) => (
-          <article className={`metric-card metric-card-${index + 1}`} key={metric.label}>
-            <span className="metric-icon"><Icon name={metric.icon} size={16} /></span>
+        {metrics.map((metric) => (
+          <article className="metric-card" key={metric.label}>
+            <span className="metric-icon">{metric.asset ? <img src={metric.asset} alt="" /> : <Icon name={metric.icon} size={24} />}</span>
             <div className="metric-copy">
               <p className="metric-value">{metric.value}</p>
               <h2>{metric.label}</h2>

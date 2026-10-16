@@ -29,6 +29,14 @@ let rejectUser = false
 let waitForBoth = false
 let releaseReads: (() => void) | undefined
 let readsStarted = new Set<string>()
+let gradeRows = [
+  { id: 'grade-1', score: 40, assessment: { max_score: 50 } },
+  { id: 'grade-2', score: 90, assessment: { max_score: 100 } },
+]
+let gradePageSize = 500
+let attendanceCount = 4
+let presentCount = 3
+let gradeError = false
 let authenticate: typeof import('../src/auth.js').authenticate
 let AuthenticationError: typeof import('../src/auth.js').AuthenticationError
 let requestAttendanceData: typeof import('../src/attendance.js').requestAttendanceData
@@ -56,6 +64,17 @@ before(async () => {
       return Response.json(students, { headers: { 'Content-Range': `0-1/${count}` } })
     }
     if (url.pathname === '/rest/v1/students') return new Response(null, { headers: { 'Content-Range': '*/2' } })
+    if (url.pathname === '/rest/v1/attendance') {
+      const total = url.searchParams.has('status') ? presentCount : attendanceCount
+      return new Response(null, { headers: { 'Content-Range': `*/${total}` } })
+    }
+    if (url.pathname === '/rest/v1/grades') {
+      if (gradeError) return Response.json({ message: 'Database unavailable' }, { status: 500 })
+      const afterId = url.searchParams.get('id')?.replace(/^gt\./, '')
+      const remaining = gradeRows.filter(row => !afterId || row.id > afterId)
+      const page = remaining.slice(0, gradePageSize)
+      return Response.json(page, { headers: { 'Content-Range': `0-${page.length - 1}/${remaining.length}` } })
+    }
     throw new Error(`Unexpected request: ${url.pathname}`)
   }
   ;({ authenticate, AuthenticationError } = await import('../src/auth.js'))
@@ -70,6 +89,14 @@ beforeEach(() => {
   waitForBoth = false
   releaseReads = undefined
   readsStarted = new Set()
+  gradeRows = [
+    { id: 'grade-1', score: 40, assessment: { max_score: 50 } },
+    { id: 'grade-2', score: 90, assessment: { max_score: 100 } },
+  ]
+  gradePageSize = 500
+  attendanceCount = 4
+  presentCount = 3
+  gradeError = false
 })
 after(() => { globalThis.fetch = originalFetch })
 
@@ -138,6 +165,45 @@ test('access failures return no roster and capped responses cannot show misleadi
 })
 
 test('dashboard still returns the authenticated classes and exact student count', async () => {
-  assert.deepEqual(await requestDashboardData(token()), { classes: [classRow], totalStudents: 2 })
+  const accessToken = token()
+  assert.deepEqual(await requestDashboardData(accessToken), {
+    classes: [classRow], totalStudents: 2, averageGrade: 85, attendanceRate: 75,
+  })
+  assert.equal(requests.length, 5)
+  assert.ok(requests.every(request => request.authorization === `Bearer ${accessToken}`))
+  for (const request of requests.filter(request => /\/(grades|attendance)$/.test(request.url.pathname))) {
+    assert.equal(request.url.searchParams.get('enrollment.class_id'), `in.(${classId})`)
+  }
+  assert.equal(requests.find(request => request.url.searchParams.has('status'))?.url.searchParams.get('status'), 'in.(present,late)')
+})
+
+test('dashboard includes all grade pages before calculating its average', async () => {
+  gradePageSize = 1
+  assert.equal((await requestDashboardData(token())).averageGrade, 85)
+  assert.equal(requests.filter(request => request.url.pathname.endsWith('/grades')).length, 2)
+})
+
+test('dashboard distinguishes missing records from a real zero', async () => {
+  gradeRows = []
+  attendanceCount = 0
+  presentCount = 0
+  assert.deepEqual(await requestDashboardData(token()), {
+    classes: [classRow], totalStudents: 2, averageGrade: null, attendanceRate: null,
+  })
+  gradeRows = [{ id: 'grade-1', score: 0, assessment: { max_score: 100 } }]
+  attendanceCount = 4
+  const result = await requestDashboardData(token())
+  assert.equal(result.averageGrade, 0)
+  assert.equal(result.attendanceRate, 0)
+})
+
+test('dashboard avoids querying records without accessible classes and propagates query errors', async () => {
+  visible = false
+  assert.deepEqual(await requestDashboardData(token()), {
+    classes: [], totalStudents: 2, averageGrade: null, attendanceRate: null,
+  })
   assert.equal(requests.length, 2)
+  visible = true
+  gradeError = true
+  await assert.rejects(requestDashboardData(token()))
 })

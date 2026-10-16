@@ -70,6 +70,12 @@ future editing features must invalidate the affected cache entries after saving.
 Private responses retain HTTP `no-store`; application data is not placed in a
 shared HTTP cache, local storage, or session storage.
 
+The dashboard includes Average Grade and Attendance Rate for the lecturer's
+accessible classes. Average Grade is the unweighted mean of recorded assessment
+percentages; Attendance Rate counts present and late entries as attended out of
+all recorded attendance entries. Both display a dash when no records exist.
+Grade reads paginate so database response limits cannot truncate the average.
+
 The backend verifies access tokens with Supabase `getClaims`, reusing cached
 public signing keys for asymmetric tokens. Legacy symmetric tokens still use
 Supabase's Auth verification endpoint. Each database client sends the caller's

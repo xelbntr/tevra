@@ -110,6 +110,27 @@ test('allows an empty dashboard without inventing statistics', async () => {
   assert.deepEqual(await api.fetchDashboard(), { classes: [], totalStudents: 0 })
 })
 
+test('validates dashboard grade and attendance metrics while allowing missing records', async () => {
+  const request = mock.method(globalThis, 'fetch')
+  for (const metrics of [
+    { averageGrade: 82.5, attendanceRate: 94 },
+    { averageGrade: 0, attendanceRate: 0 },
+    { averageGrade: null, attendanceRate: null },
+  ]) {
+    cache.clear()
+    request.mock.mockImplementation(async () => Response.json({ ...payload, ...metrics }))
+    assert.deepEqual(await api.fetchDashboard(), { ...payload, ...metrics })
+  }
+  for (const metrics of [
+    { averageGrade: '82.5' }, { averageGrade: -1 },
+    { attendanceRate: '94%' }, { attendanceRate: 101 }, { attendanceRate: -1 },
+  ]) {
+    cache.clear()
+    request.mock.mockImplementation(async () => Response.json({ ...payload, ...metrics }))
+    await assert.rejects(api.fetchDashboard(), /unexpected dashboard response/)
+  }
+})
+
 test('handles expired sessions, permissions, and server failures', async () => {
   const request = mock.method(globalThis, 'fetch', async () => new Response(null, { status: 401 }))
   await assert.rejects(api.fetchDashboard(), api.AuthenticationError)
