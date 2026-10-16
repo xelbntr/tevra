@@ -73,7 +73,7 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
     <main className="app-frame">
       <section className="dashboard-shell auth-shell">
         <div className="auth-card">
-          <div className="brand-mark"><span className="brand-symbol">T</span><span className="brand-name">tevra</span></div>
+          <div className="brand-mark"><img className="brand-icon" src="/tevra-app-icon.svg" alt="Tevra" /></div>
           {supabaseConfigurationError ? (
             <>
               <h1>Finish setting up Tevra</h1>
@@ -85,16 +85,16 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
             <>
               <h1>{mode === 'signin' ? 'Welcome back' : 'Create your account'}</h1>
               <p>{mode === 'signin' ? 'Sign in to see your classes and students.' : 'Sign up with your email to get started.'}</p>
-              <form className="auth-form" onSubmit={mode === 'signin' ? signIn : signUp} aria-busy={submitting}>
-                <label htmlFor="login-email">Email</label>
-                <input id="login-email" type="email" autoComplete="email" required value={email}
+              <form key={mode} id={`${mode}-form`} className="auth-form" onSubmit={mode === 'signin' ? signIn : signUp} aria-busy={submitting}>
+                <label htmlFor={`${mode}-email`}>Email</label>
+                <input id={`${mode}-email`} name="email" type="email" autoComplete={mode === 'signin' ? 'username' : 'email'} required value={email}
                   onChange={(event) => setEmail(event.target.value)} disabled={submitting} />
-                <label htmlFor="login-password">Password</label>
-                <input id="login-password" type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required minLength={6} value={password}
+                <label htmlFor={`${mode}-password`}>Password</label>
+                <input id={`${mode}-password`} name={mode === 'signin' ? 'password' : 'new-password'} type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required minLength={6} value={password}
                   onChange={(event) => setPassword(event.target.value)} disabled={submitting} />
                 {mode === 'signup' && <>
                   <label htmlFor="confirm-password">Confirm password</label>
-                  <input id="confirm-password" type="password" autoComplete="new-password" required minLength={6} value={confirmPassword}
+                  <input id="confirm-password" name="confirm-password" type="password" autoComplete="new-password" required minLength={6} value={confirmPassword}
                     onChange={(event) => setConfirmPassword(event.target.value)} disabled={submitting} />
                 </>}
                 {error && <p className="error-message" role="alert">{error}</p>}
@@ -107,6 +107,8 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
                 {mode === 'signin' ? 'New to Tevra?' : 'Already have an account?'}{' '}
                 <button className="text-button" type="button" disabled={submitting} onClick={() => {
                   setMode(mode === 'signin' ? 'signup' : 'signin')
+                  setPassword('')
+                  setConfirmPassword('')
                   setError('')
                   setMessage('')
                 }}>
