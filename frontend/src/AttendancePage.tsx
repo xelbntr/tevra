@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AuthenticationError, fetchAttendance, fetchDashboard } from './api'
 import type { AttendanceData, AttendanceStatus, DashboardData } from './api'
+import { AttendanceSkeleton } from './LoadingSkeletons'
 
 function localDateValue() {
   const now = new Date()
@@ -86,7 +87,7 @@ export function AttendancePage() {
     return () => controller.abort()
   }, [classId, date, dashboardLoading, dashboardError, attendanceRetry])
 
-  if (dashboardLoading) return <p className="attendance-message" role="status">Loading your classes...</p>
+  if (dashboardLoading) return <AttendanceSkeleton showFilters />
   if (dashboardError) return (
     <section className="attendance-message" role="alert">
       <p>{dashboardError}</p>
@@ -123,7 +124,7 @@ export function AttendancePage() {
       {!validDate(date) ? (
         <p className="attendance-message" role="alert">Choose a valid date to view attendance.</p>
       ) : attendanceLoading ? (
-        <p className="attendance-message" role="status">Loading attendance...</p>
+        <AttendanceSkeleton />
       ) : attendanceError ? (
         <section className="attendance-message" role="alert">
           <p>{attendanceError}</p>

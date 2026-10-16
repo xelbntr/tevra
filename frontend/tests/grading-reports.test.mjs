@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom'
 
 const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'https://tevra.test/grading-reports' })
 const globals = new Map()
-let server, React, createRoot, GradingReports, root
+let server, React, createRoot, ReportsPage, root
 const students = [{ student_id: 'student-1', full_name: 'Ada', student_number: 'S001' }, { student_id: 'student-2', full_name: 'Grace', student_number: 'S002' }]
 const classes = ['class-1', 'class-2', 'class-3'].map(id => ({ id, name: id, course_code: id, academic_year: '2026', semester: '1' }))
 const report = {
@@ -32,7 +32,7 @@ before(async () => {
     plugins: [{
       name: 'grading-api-fixture', enforce: 'pre',
       resolveId(source, importer) {
-        if (source === './api' && importer?.endsWith('/GradingReports.tsx')) return '\0grading-api'
+        if (source === './api' && importer?.endsWith('/ReportsPage.tsx')) return '\0grading-api'
       },
       load(id) {
         if (id === '\0grading-api') return ['fetchDashboard', 'fetchClassStudents', 'fetchStudentReport', 'downloadStudentGradeReport']
@@ -42,7 +42,7 @@ before(async () => {
   })
   React = await import('react')
   ;({ createRoot } = await import('react-dom/client'))
-  ;({ GradingReports } = await server.ssrLoadModule('/src/GradingReports.tsx'))
+  ;({ ReportsPage } = await server.ssrLoadModule('/src/ReportsPage.tsx'))
 })
 
 beforeEach(() => {
@@ -68,7 +68,7 @@ after(async () => {
   dom.window.close()
 })
 
-const mount = () => React.act(async () => root.render(React.createElement(GradingReports)))
+const mount = () => React.act(async () => root.render(React.createElement(ReportsPage)))
 const selectors = () => [...document.querySelectorAll('select')]
 const buttons = () => [...document.querySelectorAll('button')]
 const change = (select, value) => React.act(async () => {

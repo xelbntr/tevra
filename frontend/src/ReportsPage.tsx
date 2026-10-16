@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { downloadStudentGradeReport, fetchClassStudents, fetchDashboard, fetchStudentReport } from './api'
 import type { ClassStudent, DashboardClass, StudentReport } from './api'
+import { LoadingSelect, ReportSkeleton } from './LoadingSkeletons'
 
-export function GradingReports() {
+export function ReportsPage() {
   const [retry, setRetry] = useState(0)
   return <GradingReportsRequest key={retry} onRetry={() => setRetry(value => value + 1)} />
 }
@@ -95,40 +96,44 @@ function GradingReportsRequest({ onRetry }: { onRetry: () => void }) {
   }
 
   return (
-    <section className="grading-page" aria-label="Grading and reports">
+    <section className="reports-page" aria-label="Reports">
       <div className="grading-intro">
-        <h2>Student grading summary and report</h2>
+        <h2>Student summary and report</h2>
         <p>Select one class and one student. Download creates a Word report from that student’s records in the selected class using the JOINTS template.</p>
       </div>
 
       <div className="report-selection">
         <label>
           <span>Class</span>
-          <select value={classId} disabled={loadingClasses || classes.length === 0 || generating || downloading} onChange={event => {
-            if (reportRequest.current) return
-            rosterRequest.current?.abort()
-            setStudents([])
-            setStudentId('')
-            setReport(null)
-            setError('')
-            setLoadingStudents(Boolean(event.target.value))
-            setClassId(event.target.value)
-          }}>
-            {classes.length === 0 && <option value="">{loadingClasses ? 'Loading classes…' : 'No classes available'}</option>}
-            {classes.map(item => <option value={item.id} key={item.id}>{item.name} · {item.course_code}</option>)}
-          </select>
+          <LoadingSelect loading={loadingClasses}>
+            <select value={classId} aria-busy={loadingClasses} disabled={loadingClasses || classes.length === 0 || generating || downloading} onChange={event => {
+              if (reportRequest.current) return
+              rosterRequest.current?.abort()
+              setStudents([])
+              setStudentId('')
+              setReport(null)
+              setError('')
+              setLoadingStudents(Boolean(event.target.value))
+              setClassId(event.target.value)
+            }}>
+              {classes.length === 0 && <option value="">{loadingClasses ? 'Loading classes…' : 'No classes available'}</option>}
+              {classes.map(item => <option value={item.id} key={item.id}>{item.name} · {item.course_code}</option>)}
+            </select>
+          </LoadingSelect>
         </label>
         <label>
           <span>Student</span>
-          <select value={studentId} disabled={loadingStudents || students.length === 0 || generating || downloading} onChange={event => {
-            if (reportRequest.current) return
-            setStudentId(event.target.value)
-            setReport(null)
-            setError('')
-          }}>
-            {students.length === 0 && <option value="">{loadingStudents ? 'Loading students…' : 'No active students'}</option>}
-            {students.map(student => <option value={student.student_id} key={student.student_id}>{student.full_name} · {student.student_number}</option>)}
-          </select>
+          <LoadingSelect loading={loadingClasses || loadingStudents}>
+            <select value={studentId} aria-busy={loadingClasses || loadingStudents} disabled={loadingClasses || loadingStudents || students.length === 0 || generating || downloading} onChange={event => {
+              if (reportRequest.current) return
+              setStudentId(event.target.value)
+              setReport(null)
+              setError('')
+            }}>
+              {students.length === 0 && <option value="">{loadingClasses || loadingStudents ? 'Loading students…' : 'No active students'}</option>}
+              {students.map(student => <option value={student.student_id} key={student.student_id}>{student.full_name} · {student.student_number}</option>)}
+            </select>
+          </LoadingSelect>
         </label>
         <button className="secondary-button" type="button" onClick={generate} disabled={!studentId || generating || downloading || loadingStudents}>
           {generating ? 'Preparing preview...' : 'Preview report'}
@@ -146,7 +151,8 @@ function GradingReportsRequest({ onRetry }: { onRetry: () => void }) {
       </div>}
       {!error && !loadingClasses && classes.length === 0 && <p className="report-empty">Your account has no classes to report on yet.</p>}
       {!error && !loadingStudents && classId && students.length === 0 && <p className="report-empty">This class has no active students.</p>}
-      {(generating || downloading) && <p className="report-empty" role="status">{downloading ? 'Creating the Word report for this student...' : 'Reviewing this student’s recorded information...'}</p>}
+      {generating && <ReportSkeleton />}
+      {downloading && <p className="report-empty" role="status">Creating the Word report for this student...</p>}
 
       {report && <ReportView report={report} />}
     </section>
