@@ -15,6 +15,8 @@ before(async () => {
   process.env.VITE_SUPABASE_URL = 'https://example.supabase.co'
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_test'
   process.env.VITE_DASHBOARD_URL = 'http://localhost:5000/api/dashboard'
+  delete process.env.VITE_ATTENDANCE_URL
+  delete process.env.VITE_REPORT_URL
   delete process.env.VITE_AI_CHAT_URL
   server = await createServer({
     root: fileURLToPath(new URL('../', import.meta.url)),
@@ -47,6 +49,40 @@ test('sends the current token and reads class rows and student totals', async ()
   auth.getSession.mock.mockImplementation(async () => ({ data: { session: { access_token: 'token-2' } }, error: null }))
   await api.fetchDashboard()
   assert.equal(request.mock.calls[1].arguments[1].headers.Authorization, 'Bearer token-2')
+})
+
+test('loads the authenticated class roster for grading and reports', async () => {
+  const roster = { students: [{ student_id: 'student-1', student_number: 'S001', full_name: 'Ada Lovelace' }] }
+  const request = mock.method(globalThis, 'fetch', async () => Response.json(roster))
+  assert.deepEqual(await api.fetchClassStudents('class-1'), roster.students)
+  const [url, options] = request.mock.calls[0].arguments
+  assert.match(url, /^http:\/\/localhost:5000\/api\/attendance\?/)
+  assert.match(url, /class_id=class-1/)
+  assert.match(url, /date=\d{4}-\d{2}-\d{2}/)
+  assert.equal(options.headers.Authorization, 'Bearer token-1')
+  assert.equal(options.cache, 'no-store')
+})
+
+test('requests and validates an authenticated student report', async () => {
+  const report = {
+    report: {
+      title: 'Academic report draft',
+      academic_summary: 'Recorded grades are steady.',
+      attendance_summary: 'Four entries are available.',
+      strengths: [], areas_for_support: [], recommended_next_steps: [], data_limitations: [],
+      grade_summary: { graded_assessments: 2, average_percentage: 84.5 },
+      attendance_totals: { total: 4, present: 3, late: 0, absent: 1, excused: 0 },
+    },
+    grade: 84.5,
+    attendance: 75,
+  }
+  const request = mock.method(globalThis, 'fetch', async () => Response.json(report))
+  assert.deepEqual(await api.fetchStudentReport('class-1', 'student-1'), report)
+  const [url, options] = request.mock.calls[0].arguments
+  assert.equal(url, 'http://localhost:5000/api/reports')
+  assert.equal(options.method, 'POST')
+  assert.equal(options.headers.Authorization, 'Bearer token-1')
+  assert.deepEqual(JSON.parse(options.body), { class_id: 'class-1', student_id: 'student-1' })
 })
 
 test('does not request private data when signed out', async () => {

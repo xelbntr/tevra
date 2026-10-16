@@ -477,6 +477,34 @@ button:disabled { cursor: wait; opacity: 0.65; }
 .class-list li { padding: 12px 0; border-top: 1px solid rgba(105, 83, 50, 0.12); }
 .class-list h3 { margin: 0; font-size: 14px; }
 .class-list li p { margin: 5px 0 0; }
+.grading-page { display: grid; gap: 14px; }
+.grading-intro, .report-selection, .report-section, .report-metrics article {
+  border: 1px solid rgba(105, 83, 50, 0.1);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 0 4px 12px rgba(62, 46, 25, 0.04);
+}
+.grading-intro { padding: 18px; }
+.grading-intro h2, .report-section h2 { margin: 0; font-size: 17px; }
+.grading-intro p, .report-section p { margin: 7px 0 0; color: #66573f; font-size: 13px; line-height: 1.65; }
+.report-selection { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) auto auto; align-items: end; gap: 11px; padding: 16px; }
+.report-selection label { display: grid; gap: 6px; min-width: 0; color: #5d4b31; font-size: 11px; font-weight: 700; }
+.report-selection select { width: 100%; min-height: 39px; padding: 0 10px; border: 1px solid rgba(89, 69, 41, 0.2); border-radius: 8px; background: rgba(255,255,255,.78); color: #3b2b1b; font: inherit; font-weight: 500; }
+.report-selection .primary-button { min-height: 39px; white-space: nowrap; }
+.report-error, .report-empty { margin: 0; padding: 14px 16px; border-radius: 10px; background: rgba(255,255,255,.55); font-size: 13px; line-height: 1.5; }
+.student-report { display: grid; gap: 12px; }
+.report-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.report-metrics article { display: grid; align-content: start; gap: 5px; min-height: 100px; padding: 13px; }
+.report-metrics span, .report-metrics small { color: #74664f; font-size: 10px; line-height: 1.4; }
+.report-metrics strong { color: #3d2b16; font-size: 21px; letter-spacing: -.5px; }
+.report-section { padding: 16px; }
+.report-section h3 { margin: 14px 0 0; color: #594426; font-size: 12px; }
+.report-section h2 + h3 { margin-top: 13px; }
+.report-columns { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.report-list h3 { margin: 0; font-size: 13px; }
+.report-list ul { display: grid; gap: 7px; margin: 10px 0 0; padding-left: 19px; color: #66573f; font-size: 12px; line-height: 1.55; }
+.report-list p { margin-top: 8px; }
+.report-disclaimer { margin: 0; color: #71644f; font-size: 10px; line-height: 1.5; }
 
 @keyframes notice-in {
   from { opacity: 0; transform: translateY(6px); }
@@ -511,6 +539,9 @@ button:disabled { cursor: wait; opacity: 0.65; }
   .assistant-panel { min-height: 420px; padding: 12px; }
   .chat-transcript { max-height: 55vh; }
   .composer-footer { align-items: flex-end; }
+  .report-selection { grid-template-columns: 1fr; }
+  .report-metrics { grid-template-columns: 1fr; }
+  .report-metrics article { min-height: auto; }
 }
 
 @media (max-width: 380px) {

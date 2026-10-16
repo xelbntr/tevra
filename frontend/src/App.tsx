@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, MouseEvent, SVGProps } from 'react'
 import { AuthGate } from './AuthGate'
+import { GradingReports } from './GradingReports'
 import { AuthenticationError, fetchDashboard, sendAssistantMessage } from './api'
 import type { AssistantMessage, DashboardData } from './api'
 import { getSupabase } from './supabase'
@@ -78,6 +79,7 @@ function Dashboard({ email }: { email: string | undefined }) {
   const currentPage = navigation.find((item) => item.href === currentPath)
   const isDashboard = currentPath === '/' || currentPath === '/dashboard'
   const isAssistant = currentPath === '/assistant'
+  const isGradingReports = currentPath === '/grading-reports'
 
   async function signOut() {
     setSigningOut(true)
@@ -187,6 +189,8 @@ function Dashboard({ email }: { email: string | undefined }) {
                 initialPrompt={assistantPrompt}
                 onInitialPromptHandled={() => setAssistantPrompt('')}
               />
+            ) : isGradingReports ? (
+              <GradingReports />
             ) : (
               <section className="coming-soon" aria-live="polite">
                 <div className="coming-soon-icon"><Icon name={currentPage?.icon ?? 'book'} size={25} /></div>
