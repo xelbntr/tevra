@@ -7,6 +7,7 @@ import { AuthGate } from './AuthGate'
 import { AccountMenu } from './AccountMenu'
 import { AttendancePage } from './AttendancePage'
 import { GradingReports } from './GradingReports'
+import { DashboardSkeleton } from './LoadingSkeletons'
 import { AuthenticationError, fetchDashboard, sendAssistantChat, confirmAssistantEdit } from './api'
 import type { AssistantMessage, AssistantProposal, DashboardData } from './api'
 import { getSupabase } from './supabase'
@@ -380,7 +381,7 @@ function DashboardRequest({ onRetry }: { onRetry: () => void }) {
       {!authenticationFailed && <button className="secondary-button" type="button" onClick={onRetry}>Try again</button>}
     </section>
   )
-  if (!dashboard) return <p role="status">Loading your dashboard…</p>
+  if (!dashboard) return <DashboardSkeleton />
 
   const metrics = [
     { label: 'Students', value: dashboard.totalStudents, icon: 'person', asset: '/dashboard/students.svg' },
