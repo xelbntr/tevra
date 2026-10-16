@@ -19,3 +19,4 @@ tests/
 .vercel
 .env*
 todo.md
+.vibe-wise/
