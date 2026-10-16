@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FormEvent, MouseEvent, SVGProps } from 'react'
+import type { CSSProperties, FormEvent, MouseEvent, SVGProps } from 'react'
 import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -95,6 +95,7 @@ function Dashboard({ email }: { email: string | undefined }) {
   const isAssistant = currentPath === '/assistant'
   const isReports = currentPath === '/reports'
   const isGrades = currentPath === '/grades'
+  const activeNavigationIndex = navigation.findIndex(item => item.href === (isDashboard ? '/dashboard' : currentPath))
 
   useEffect(() => {
     if (normalizedPath === '/grading-reports') {
@@ -147,7 +148,11 @@ function Dashboard({ email }: { email: string | undefined }) {
         </header>
 
         <div className="dashboard-layout">
-          <nav className="side-nav" aria-label="Main navigation">
+          <nav className="side-nav" aria-label="Main navigation" style={{
+            '--active-tab': activeNavigationIndex,
+            '--nav-count': navigation.length,
+          } as CSSProperties}>
+            {activeNavigationIndex >= 0 && <span className="nav-selection" aria-hidden="true" />}
             {navigation.map((item) => (
               <a
                 className={`nav-button ${(currentPath === item.href || (item.label === 'Dashboard' && currentPath === '/')) ? 'is-active' : ''}`}
@@ -159,6 +164,7 @@ function Dashboard({ email }: { email: string | undefined }) {
                 onClick={(event) => navigate(event, item.href)}
               >
                 <Icon name={item.icon} size={18} />
+                <span className="nav-label" aria-hidden="true">{item.label === 'Dashboard' ? 'Home' : item.label === 'AI Assistant' ? 'Assistant' : item.label}</span>
               </a>
             ))}
           </nav>
