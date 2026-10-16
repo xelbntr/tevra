@@ -19,6 +19,37 @@ export type ClassStudent = {
   full_name: string
 }
 
+export type AttendanceStatus = 'present' | 'late' | 'excused' | 'absent'
+
+export type AttendanceStudent = {
+  enrollment_id: string
+  student_id: string
+  student_number: string
+  full_name: string
+  status: AttendanceStatus | null
+  notes: string | null
+}
+
+export type AttendanceData = {
+  class: DashboardClass
+  date: string
+  students: AttendanceStudent[]
+  summary: {
+    totalStudents: number
+    present: number
+    absent: number
+    unmarked: number
+    attendanceRate: number | null
+  }
+  recap: {
+    present: number
+    late: number
+    excused: number
+    absent: number
+    unmarked: number
+  }
+}
+
 export type StudentReport = {
   report: {
     title: string
@@ -170,6 +201,62 @@ export async function fetchClassStudents(classId: string, signal?: AbortSignal):
     students.push({ student_id: student.student_id, student_number: student.student_number, full_name: student.full_name })
   }
   return students
+}
+
+function isAttendanceData(value: unknown): value is AttendanceData {
+  if (!isRecord(value) || !isRecord(value.class) || !Array.isArray(value.students)
+    || !isRecord(value.summary) || !isRecord(value.recap)) return false
+  const classData = value.class
+  const summary = value.summary
+  const recap = value.recap
+  const counts = ['present', 'late', 'excused', 'absent', 'unmarked']
+  return ['id', 'name', 'course_code', 'academic_year', 'semester']
+    .every(key => typeof classData[key] === 'string')
+    && typeof value.date === 'string'
+    && Number.isSafeInteger(summary.totalStudents) && (summary.totalStudents as number) >= 0
+    && ['present', 'absent', 'unmarked'].every(key => Number.isSafeInteger(summary[key]) && (summary[key] as number) >= 0)
+    && (summary.attendanceRate === null || (typeof summary.attendanceRate === 'number'
+      && Number.isFinite(summary.attendanceRate) && summary.attendanceRate >= 0 && summary.attendanceRate <= 100))
+    && counts.every(key => Number.isSafeInteger(recap[key]) && (recap[key] as number) >= 0)
+    && value.students.every((student: unknown) => isRecord(student)
+      && typeof student.enrollment_id === 'string'
+      && typeof student.student_id === 'string'
+      && typeof student.student_number === 'string'
+      && typeof student.full_name === 'string'
+      && (student.status === null || ['present', 'late', 'excused', 'absent'].includes(String(student.status)))
+      && (student.notes === null || typeof student.notes === 'string'))
+}
+
+export async function fetchAttendance(classId: string, date: string, signal?: AbortSignal): Promise<AttendanceData> {
+  const { data: { session }, error } = await getSupabase().auth.getSession()
+  if (error) throw error
+  if (!session) throw new AuthenticationError()
+  signal?.throwIfAborted()
+
+  const endpoint = import.meta.env.PROD
+    ? '/api/attendance'
+    : import.meta.env.VITE_ATTENDANCE_URL?.trim() || 'http://localhost:5000/api/attendance'
+  const url = new URL(endpoint, window.location.origin)
+  url.search = new URLSearchParams({ class_id: classId, date }).toString()
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      cache: 'no-store',
+      signal,
+    })
+  } catch (error) {
+    if (signal?.aborted) throw error
+    throw new Error('Could not reach the attendance service. Check your connection and try again.')
+  }
+
+  if (response.status === 401) throw new AuthenticationError()
+  if (response.status === 404) throw new Error('This class could not be found or is no longer available to your account.')
+  if (!response.ok) throw new Error('Could not load attendance. Please try again.')
+  const data: unknown = await response.json().catch(() => null)
+  if (!isAttendanceData(data)) throw new Error('The server returned an unexpected attendance response.')
+  return data
 }
 
 export async function fetchStudentReport(classId: string, studentId: string, signal?: AbortSignal): Promise<StudentReport> {

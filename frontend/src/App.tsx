@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, MouseEvent, SVGProps } from 'react'
 import { AuthGate } from './AuthGate'
+import { AttendancePage } from './AttendancePage'
 import { GradingReports } from './GradingReports'
 import { AuthenticationError, fetchDashboard, sendAssistantMessage } from './api'
 import type { AssistantMessage, DashboardData } from './api'
@@ -78,6 +79,7 @@ function Dashboard({ email }: { email: string | undefined }) {
   const currentPath = pathname.replace(/\/+$/, '') || '/'
   const currentPage = navigation.find((item) => item.href === currentPath)
   const isDashboard = currentPath === '/' || currentPath === '/dashboard'
+  const isAttendance = currentPath === '/attendance'
   const isAssistant = currentPath === '/assistant'
   const isGradingReports = currentPath === '/grading-reports'
 
@@ -184,6 +186,8 @@ function Dashboard({ email }: { email: string | undefined }) {
                   </button>
                 </section>
               </>
+            ) : isAttendance ? (
+              <AttendancePage />
             ) : isAssistant ? (
               <AssistantChat
                 initialPrompt={assistantPrompt}
