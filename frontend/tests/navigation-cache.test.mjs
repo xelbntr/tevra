@@ -16,7 +16,7 @@ const report = { grade: 85, attendance: 100, report: {
   grade_summary: { graded_assessments: 1, average_percentage: 85 },
   attendance_totals: { total: 1, present: 1, late: 0, absent: 0, excused: 0 },
 } }
-let server, React, createRoot, App, api, cache, root, session, authListener, requests
+let server, React, createRoot, App, api, cache, root, session, authListener, requests, gradebook
 const sessionFor = id => ({ user: { id, email: `${id}@tevra.test` }, access_token: `token-${id}` })
 
 before(async () => {
@@ -63,12 +63,33 @@ beforeEach(() => {
   cache.clear()
   session = sessionFor('teacher-1')
   requests = []
+  gradebook = {
+    classes,
+    students: classes.flatMap(item => students.map((student, index) => ({ ...student, class_id: item.id, enrollment_id: `${item.id}-enrollment-${index}` }))),
+    assessments: classes.map(item => ({ id: `${item.id}-quiz`, class_id: item.id, title: 'Quiz 1', assessment_type: 'quiz', max_score: 50 })),
+    grades: [{ id: 'grade-1', enrollment_id: 'class-1-enrollment-0', assessment_id: 'class-1-quiz', score: 40 }],
+  }
   window.history.replaceState({}, '', '/dashboard')
   globalThis.fetch = async (target, options) => {
     const url = new URL(target, window.location.origin)
     requests.push({ url, options })
     await delay(20) // Simulated network latency makes accidental reloads observable.
     if (url.pathname === '/api/dashboard') return Response.json({ classes, totalStudents: 2 })
+    if (url.pathname === '/api/grades') {
+      if (options?.method === 'POST') {
+        const input = JSON.parse(options.body)
+        const previous = gradebook.grades.find(item => item.enrollment_id === input.enrollment_id && item.assessment_id === input.assessment_id)
+        const saved = { ...input, id: previous?.id || 'grade-new' }
+        gradebook.grades = [...gradebook.grades.filter(item => item.id !== saved.id), saved]
+        return Response.json(saved)
+      }
+      return Response.json(gradebook)
+    }
+    if (url.pathname === '/api/grades/assessments') {
+      const item = { ...JSON.parse(options.body), id: 'new-assessment' }
+      gradebook.assessments.push(item)
+      return Response.json(item, { status: 201 })
+    }
     if (url.pathname === '/api/attendance/roster') return Response.json({ students })
     if (url.pathname === '/api/attendance') return Response.json({
       class: classes.find(row => row.id === url.searchParams.get('class_id')),
@@ -103,8 +124,8 @@ async function settleUntil(predicate) {
 }
 async function mount() {
   await React.act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(App))))
-  await settleUntil(() => document.querySelector('.attendance-results') && document.querySelector('.grading-page select')?.options.length === 2
-    && !document.querySelectorAll('.grading-page select')[1]?.disabled)
+  await settleUntil(() => document.querySelector('.attendance-results') && document.querySelector('.reports-page select')?.options.length === 2
+    && !document.querySelectorAll('.reports-page select')[1]?.disabled)
 }
 const navigate = label => React.act(async () => {
   document.querySelector(`nav a[aria-label="${label}"]`).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }))
@@ -122,7 +143,7 @@ test('StrictMode shares initial requests and cached tab switches require no netw
     'the grading preload reuses the in-flight attendance roster')
   const start = performance.now()
   for (let i = 0; i < 20; i++) {
-    for (const label of ['Attendance', 'Grading & Reports', 'Dashboard']) {
+    for (const label of ['Attendance', 'Reports', 'Dashboard']) {
       await navigate(label)
       assert.equal(document.querySelector('h1').textContent, label)
       const visible = [...document.querySelectorAll('.dashboard-content > div')].filter(node => !node.hidden)
@@ -133,14 +154,99 @@ test('StrictMode shares initial requests and cached tab switches require no netw
   assert.equal(requests.length, 2)
 })
 
-test('report quick action opens the report workflow and quick grading is visibly unavailable', async () => {
+test('quick actions open the separate reports and grades workflows', async () => {
   await mount()
   const [reportButton, gradingButton] = document.querySelectorAll('.quick-actions button')
-  assert.equal(gradingButton.disabled, true)
-  assert.match(gradingButton.textContent, /Coming soon/)
+  assert.equal(gradingButton.disabled, false)
   await React.act(async () => reportButton.click())
-  assert.equal(window.location.pathname, '/grading-reports')
-  assert.equal(document.querySelector('.grading-page').parentElement.hidden, false)
+  assert.equal(window.location.pathname, '/reports')
+  assert.equal(document.querySelector('.reports-page').parentElement.hidden, false)
+  await React.act(async () => gradingButton.click())
+  await settleUntil(() => document.querySelector('.grades-table'))
+  assert.equal(window.location.pathname, '/grades')
+  assert.equal(document.querySelector('.grades-page').parentElement.hidden, false)
+})
+
+const fillInput = (input, value) => React.act(async () => {
+  Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set.call(input, value)
+  input.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+})
+const gradesButton = text => [...document.querySelectorAll('.grades-page button')].find(button => button.textContent === text)
+
+test('old combined-page links open Reports', async () => {
+  window.history.replaceState({}, '', '/grading-reports')
+  await mount()
+  assert.equal(window.location.pathname, '/reports')
+  assert.equal(document.querySelector('nav a[aria-current=page]').getAttribute('aria-label'), 'Reports')
+})
+
+test('gradebook displays raw scores, edits zero and refreshes reports and dashboard caches', async () => {
+  await mount()
+  await navigate('Reports')
+  await React.act(async () => document.querySelector('.report-selection button').click())
+  await settleUntil(() => document.querySelector('.student-report'))
+  await navigate('Grades')
+  await settleUntil(() => document.querySelector('.grades-table'))
+  assert.match(document.querySelector('.grade-cell.is-recorded').textContent, /40.*50/)
+  await React.act(async () => document.querySelector('.grade-cell.is-recorded').click())
+  assert.equal(document.getElementById('grade-score').value, '40')
+  await fillInput(document.getElementById('grade-score'), '0')
+  await React.act(async () => document.querySelector('.grades-score-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })))
+  await settleUntil(() => document.querySelector('.grades-notice')?.textContent.startsWith('Saved 0/50'))
+  await settleUntil(() => requests.filter(item => item.url.pathname === '/api/dashboard').length === 2)
+  assert.equal(gradebook.grades.length, 1)
+  assert.equal(gradebook.grades[0].score, 0)
+  assert.match(document.querySelector('.grade-cell.is-recorded').textContent, /0.*50/)
+  assert.equal(document.querySelector('.student-report'), null)
+  await navigate('Reports')
+  await settleUntil(() => !document.querySelector('.report-selection button').disabled)
+  await React.act(async () => document.querySelector('.report-selection button').click())
+  await settleUntil(() => document.querySelector('.student-report'))
+  assert.equal(requests.filter(item => item.url.pathname === '/api/reports').length, 2)
+})
+
+test('new scores explicitly select duplicate names, support decimals and persist a draft across navigation', async () => {
+  gradebook.students.forEach(item => { item.full_name = 'Alex' })
+  await mount()
+  await navigate('Grades')
+  await settleUntil(() => document.querySelector('.grades-table'))
+  await React.act(async () => gradesButton('Add new score').click())
+  await fillInput(document.querySelector('#grade-student-search'), 'Alex')
+  assert.equal(document.querySelectorAll('.grades-search-results button').length, 2)
+  assert.equal(document.querySelector('.grades-score-form'), null)
+  await React.act(async () => document.querySelectorAll('.grades-search-results button')[1].click())
+  await change(document.querySelector('.grades-assessment-row select'), 'class-1-quiz')
+  assert.equal(document.querySelector('#grade-score').value, '')
+  await fillInput(document.querySelector('#grade-score'), '37.5')
+  await navigate('Dashboard')
+  await navigate('Grades')
+  assert.equal(document.querySelector('#grade-score').value, '37.5')
+  await React.act(async () => gradesButton('Submit Score').click())
+  await settleUntil(() => document.querySelector('.grades-notice')?.textContent.startsWith('Saved 37.5/50'))
+  const saved = gradebook.grades.find(item => item.id === 'grade-new')
+  assert.equal(saved.enrollment_id, 'class-1-enrollment-1')
+  assert.equal(saved.score, 37.5)
+})
+
+test('assessment creation adds an ungraded column and failed score saves retain the draft', async () => {
+  await mount()
+  await navigate('Grades')
+  await settleUntil(() => document.querySelector('.grades-table'))
+  await React.act(async () => gradesButton('New assessment').click())
+  await fillInput(document.querySelector('.grades-assessment-form input'), 'Final exam')
+  await React.act(async () => gradesButton('Create assessment').click())
+  await settleUntil(() => document.querySelector('.grades-table thead').textContent.includes('Final exam'))
+  assert.equal(gradebook.assessments.at(-1).max_score, 100)
+  await React.act(async () => document.querySelector('[aria-label="Add Final exam score for Ada (S001)"]').click())
+  await fillInput(document.querySelector('#grade-score'), '88')
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async (target, options) => options?.method === 'POST' && new URL(target).pathname === '/api/grades'
+    ? Response.json({ error: 'Please try saving again.' }, { status: 500 }) : previousFetch(target, options)
+  await React.act(async () => gradesButton('Submit Score').click())
+  await settleUntil(() => document.querySelector('.grades-page [role=alert]'))
+  assert.equal(document.querySelector('#grade-score').value, '88')
+  assert.equal(gradesButton('Submit Score').disabled, false)
+  assert.match(document.querySelector('.grades-page [role=alert]').textContent, /Please try saving again/)
 })
 
 test('assistant previews persist across navigation and saves refresh mounted data views', async () => {
@@ -250,16 +356,16 @@ test('attendance class and grading selections and previews survive leaving the t
   await navigate('Attendance')
   await change(document.querySelector('.attendance-toolbar select'), 'class-2')
   await settleUntil(() => document.querySelector('.attendance-class-kicker')?.textContent.startsWith('class-2'))
-  await navigate('Grading & Reports')
-  await change(document.querySelectorAll('.grading-page select')[1], 'student-2')
+  await navigate('Reports')
+  await change(document.querySelectorAll('.reports-page select')[1], 'student-2')
   await React.act(async () => document.querySelector('.report-selection button').click())
   await settleUntil(() => document.querySelector('.student-report'))
   const count = requests.length
   await navigate('Dashboard')
   await navigate('Attendance')
   assert.equal(document.querySelector('.attendance-toolbar select').value, 'class-2')
-  await navigate('Grading & Reports')
-  assert.equal(document.querySelectorAll('.grading-page select')[1].value, 'student-2')
+  await navigate('Reports')
+  assert.equal(document.querySelectorAll('.reports-page select')[1].value, 'student-2')
   assert.match(document.querySelector('.student-report').textContent, /Retained student report/)
   await React.act(async () => document.querySelector('.report-selection button').click())
   assert.equal(requests.length, count, 'preview also reuses the selected student report')
@@ -278,10 +384,10 @@ test('attendance cache separates dates and classes and reuses each loaded select
 
 test('other grading classes use the lightweight roster and cache it for return visits', async () => {
   await mount()
-  await navigate('Grading & Reports')
-  const classSelect = document.querySelector('.grading-page select')
+  await navigate('Reports')
+  const classSelect = document.querySelector('.reports-page select')
   await change(classSelect, 'class-2')
-  await settleUntil(() => !document.querySelectorAll('.grading-page select')[1].disabled)
+  await settleUntil(() => !document.querySelectorAll('.reports-page select')[1].disabled)
   assert.equal(requests.filter(request => request.url.pathname === '/api/attendance/roster').length, 1)
   assert.equal(requests.at(-1).url.searchParams.get('class_id'), 'class-2')
   const count = requests.length
@@ -299,7 +405,7 @@ test('an attendance failure falls back to the lightweight grading roster', async
     return successfulFetch(target, options)
   }
   await React.act(async () => root.render(React.createElement(App)))
-  await settleUntil(() => document.querySelectorAll('.grading-page select')[1]?.options.length === 2)
+  await settleUntil(() => document.querySelectorAll('.reports-page select')[1]?.options.length === 2)
   assert.ok(requests.some(request => request.url.pathname.endsWith('/roster')))
   assert.match(document.querySelector('.attendance-message[role="alert"]').textContent, /Could not load attendance/)
 })

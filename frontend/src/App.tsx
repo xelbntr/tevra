@@ -6,7 +6,8 @@ import remarkGfm from 'remark-gfm'
 import { AuthGate } from './AuthGate'
 import { AccountMenu } from './AccountMenu'
 import { AttendancePage } from './AttendancePage'
-import { GradingReports } from './GradingReports'
+import { ReportsPage } from './ReportsPage'
+import { GradesPage } from './GradesPage'
 import { DashboardSkeleton } from './LoadingSkeletons'
 import { AuthenticationError, fetchDashboard, sendAssistantChat, confirmAssistantEdit } from './api'
 import type { AssistantMessage, AssistantProposal, DashboardData } from './api'
@@ -53,7 +54,8 @@ function Icon({ name, size = 18, strokeWidth = 1.8 }: IconProps) {
 const navigation = [
   { label: 'Dashboard', icon: 'grid', href: '/dashboard' },
   { label: 'Attendance', icon: 'calendar', href: '/attendance' },
-  { label: 'Grading & Reports', icon: 'grading', href: '/grading-reports' },
+  { label: 'Grades', icon: 'grading', href: '/grades' },
+  { label: 'Reports', icon: 'report', href: '/reports' },
   { label: 'AI Assistant', icon: 'sparkles', href: '/assistant' },
 ] satisfies { label: string; icon: IconName; href: string }[]
 
@@ -72,22 +74,32 @@ function Dashboard({ email }: { email: string | undefined }) {
   const [notice, setNotice] = useState('')
   const [signingOut, setSigningOut] = useState(false)
   const [dataRevision, setDataRevision] = useState(0)
+  const [gradesOpened, setGradesOpened] = useState(() => window.location.pathname.replace(/\/+$/, '') === '/grades')
 
   useEffect(() => {
     function syncPathname() {
       setPathname(window.location.pathname)
+      if (window.location.pathname.replace(/\/+$/, '') === '/grades') setGradesOpened(true)
     }
 
     window.addEventListener('popstate', syncPathname)
     return () => window.removeEventListener('popstate', syncPathname)
   }, [])
 
-  const currentPath = pathname.replace(/\/+$/, '') || '/'
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/'
+  const currentPath = normalizedPath === '/grading-reports' ? '/reports' : normalizedPath
   const currentPage = navigation.find((item) => item.href === currentPath)
   const isDashboard = currentPath === '/' || currentPath === '/dashboard'
   const isAttendance = currentPath === '/attendance'
   const isAssistant = currentPath === '/assistant'
-  const isGradingReports = currentPath === '/grading-reports'
+  const isReports = currentPath === '/reports'
+  const isGrades = currentPath === '/grades'
+
+  useEffect(() => {
+    if (normalizedPath === '/grading-reports') {
+      window.history.replaceState({}, '', '/reports')
+    }
+  }, [normalizedPath])
 
   async function signOut() {
     setSigningOut(true)
@@ -104,6 +116,7 @@ function Dashboard({ email }: { email: string | undefined }) {
   function navigate(event: MouseEvent<HTMLAnchorElement>, href: string) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     event.preventDefault()
+    if (href === '/grades') setGradesOpened(true)
     if (window.location.pathname !== href) window.history.pushState({}, '', href)
     setPathname(href)
   }
@@ -177,23 +190,28 @@ function Dashboard({ email }: { email: string | undefined }) {
 
                 <section className="quick-actions" aria-label="Quick actions">
                   <button className="action-card" type="button" onClick={() => {
-                    window.history.pushState({}, '', '/grading-reports')
-                    setPathname('/grading-reports')
+                    window.history.pushState({}, '', '/reports')
+                    setPathname('/reports')
                   }}>
                     <span className="action-icon"><img src="/dashboard/report.svg" alt="" /></span>
                     <span className="action-label">Generate Report</span>
                     <span className="action-arrow"><img src="/dashboard/arrow.svg" alt="" /></span>
                   </button>
-                  <button className="action-card" type="button" disabled title="Quick grading is coming soon">
+                  <button className="action-card" type="button" onClick={() => {
+                    window.history.pushState({}, '', '/grades')
+                    setGradesOpened(true)
+                    setPathname('/grades')
+                  }}>
                     <span className="action-icon"><img src="/dashboard/grading.svg" alt="" /></span>
-                    <span className="action-label">Quick Grading <small>Coming soon</small></span>
+                    <span className="action-label">Quick Grading</span>
                     <span className="action-arrow"><img src="/dashboard/arrow.svg" alt="" /></span>
                   </button>
                 </section>
               </>
             </div>
             <div hidden={!isAttendance}><AttendancePage key={dataRevision} /></div>
-            <div hidden={!isGradingReports}><GradingReports key={dataRevision} /></div>
+            <div hidden={!isReports}><ReportsPage key={dataRevision} /></div>
+            <div hidden={!isGrades}>{(isGrades || gradesOpened) && <GradesPage revision={dataRevision} onRecordsChanged={() => setDataRevision(value => value + 1)} />}</div>
             <div hidden={!isAssistant}>
               <AssistantChat
                 initialPrompt={assistantPrompt}
@@ -201,7 +219,7 @@ function Dashboard({ email }: { email: string | undefined }) {
                 onRecordsChanged={() => setDataRevision(value => value + 1)}
               />
             </div>
-            {!isAssistant && !isDashboard && !isAttendance && !isGradingReports ? (
+            {!isAssistant && !isDashboard && !isAttendance && !isReports && !isGrades ? (
               <section className="coming-soon" aria-live="polite">
                 <div className="coming-soon-icon"><Icon name={currentPage?.icon ?? 'book'} size={25} /></div>
                 <h2>{currentPage ? `${currentPage.label} is coming soon` : 'This page is coming soon'}</h2>

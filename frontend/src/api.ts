@@ -22,6 +22,57 @@ export type ClassStudent = {
   full_name: string
 }
 
+export type GradeStudent = ClassStudent & { enrollment_id: string; class_id: string }
+export type Assessment = {
+  id: string; class_id: string; title: string
+  assessment_type: 'exam' | 'quiz' | 'assignment' | 'project' | 'other'
+  max_score: number
+}
+export type Grade = { id: string; enrollment_id: string; assessment_id: string; score: number }
+export type GradesData = { classes: DashboardClass[]; students: GradeStudent[]; assessments: Assessment[]; grades: Grade[] }
+
+async function gradesRequest<T>(accessToken: string, path: string, signal?: AbortSignal, body?: unknown): Promise<T> {
+  const response = await fetch(serviceUrl(undefined, `/api/grades${path}`), {
+    method: body === undefined ? 'GET' : 'POST', signal, cache: 'no-store',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  })
+  const data = await response.json().catch(() => null)
+  if (response.status === 401) throw new AuthenticationError()
+  if (!response.ok) throw new Error(data?.error || 'Could not load or save grades. Please try again.')
+  if (!data) throw new Error('The server returned an unexpected response.')
+  return data as T
+}
+
+export function fetchGrades(signal?: AbortSignal): Promise<GradesData> {
+  return cachedRequest('grades', async (token, internalSignal) => {
+    const data = await gradesRequest<GradesData>(token, '', internalSignal)
+    if (!Array.isArray(data.classes) || !Array.isArray(data.students) || !Array.isArray(data.assessments) || !Array.isArray(data.grades)) {
+      throw new Error('The server returned an unexpected gradebook.')
+    }
+    return data
+  }, signal)
+}
+
+async function writeGrades<T>(path: string, body: unknown): Promise<T> {
+  const version = sessionCache.version
+  const { data: { session }, error } = await getSupabase().auth.getSession()
+  if (error) throw error
+  if (!session) throw new AuthenticationError()
+  const result = await gradesRequest<T>(session.access_token, path, undefined, body)
+  if (!sessionCache.accepts(version)) throw new DOMException('Session changed', 'AbortError')
+  sessionCache.clear()
+  return result
+}
+
+export function saveGrade(input: Omit<Grade, 'id'>): Promise<Grade> {
+  return writeGrades('', input)
+}
+
+export function createAssessment(input: Omit<Assessment, 'id'>): Promise<Assessment> {
+  return writeGrades('/assessments', input)
+}
+
 export type AttendanceStatus = 'present' | 'late' | 'excused' | 'absent'
 
 export type AttendanceStudent = {

@@ -6,6 +6,7 @@ import { AuthenticationError } from './auth.js'
 import { requestDashboardData } from './dashboard.js'
 import { attendanceRouter } from './attendance.js'
 import { reportsRouter } from './reports/router.js'
+import { gradesRouter } from './grade.js'
 
 const app = express()
 
@@ -21,6 +22,7 @@ app.use(['/submit', '/api/assistant/confirm'], (error: unknown, _req: express.Re
   next(error)
 })
 app.use('/api/attendance', attendanceRouter)
+app.use('/api/grades', gradesRouter)
 app.use('/api/reports', reportsRouter)
 app.use('/api/reports', (error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (error instanceof SyntaxError && 'type' in error && error.type === 'entity.parse.failed') {

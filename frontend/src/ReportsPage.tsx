@@ -3,7 +3,7 @@ import { downloadStudentGradeReport, fetchClassStudents, fetchDashboard, fetchSt
 import type { ClassStudent, DashboardClass, StudentReport } from './api'
 import { LoadingSelect, ReportSkeleton } from './LoadingSkeletons'
 
-export function GradingReports() {
+export function ReportsPage() {
   const [retry, setRetry] = useState(0)
   return <GradingReportsRequest key={retry} onRetry={() => setRetry(value => value + 1)} />
 }
@@ -96,9 +96,9 @@ function GradingReportsRequest({ onRetry }: { onRetry: () => void }) {
   }
 
   return (
-    <section className="grading-page" aria-label="Grading and reports">
+    <section className="reports-page" aria-label="Reports">
       <div className="grading-intro">
-        <h2>Student grading summary and report</h2>
+        <h2>Student summary and report</h2>
         <p>Select one class and one student. Download creates a Word report from that student’s records in the selected class using the JOINTS template.</p>
       </div>
 
