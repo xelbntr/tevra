@@ -8,6 +8,7 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
   const [session, setSession] = useState<Session | null>(null)
   const [initializing, setInitializing] = useState(true)
   const [email, setEmail] = useState('')
+  const [emailInvalid, setEmailInvalid] = useState(false)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
@@ -87,8 +88,16 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
               <p>{mode === 'signin' ? 'Sign in to see your classes and students.' : 'Sign up with your email to get started.'}</p>
               <form key={mode} id={`${mode}-form`} className="auth-form" onSubmit={mode === 'signin' ? signIn : signUp} aria-busy={submitting}>
                 <label htmlFor={`${mode}-email`}>Email</label>
-                <input id={`${mode}-email`} name="email" type="email" autoComplete={mode === 'signin' ? 'username' : 'email'} required value={email}
+                <input id={`${mode}-email`} name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false} required value={email}
+                  aria-invalid={emailInvalid || undefined} aria-describedby={emailInvalid ? `${mode}-email-error` : undefined}
+                  onFocus={() => setEmailInvalid(false)}
+                  onBlur={(event) => setEmailInvalid(!event.currentTarget.validity.valid)}
+                  onInvalid={(event) => {
+                    // Keep native submission blocking, but render feedback only after blur.
+                    event.preventDefault()
+                  }}
                   onChange={(event) => setEmail(event.target.value)} disabled={submitting} />
+                {emailInvalid && <p id={`${mode}-email-error`} className="auth-field-error" role="alert">Email is invalid</p>}
                 <label htmlFor={`${mode}-password`}>Password</label>
                 <input id={`${mode}-password`} name={mode === 'signin' ? 'password' : 'new-password'} type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required minLength={6} value={password}
                   onChange={(event) => setPassword(event.target.value)} disabled={submitting} />
@@ -107,6 +116,7 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
                 {mode === 'signin' ? 'New to Tevra?' : 'Already have an account?'}{' '}
                 <button className="text-button" type="button" disabled={submitting} onClick={() => {
                   setMode(mode === 'signin' ? 'signup' : 'signin')
+                  setEmailInvalid(false)
                   setPassword('')
                   setConfirmPassword('')
                   setError('')

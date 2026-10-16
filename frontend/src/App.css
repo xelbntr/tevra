@@ -494,6 +494,18 @@ h1 {
   color: #3d3021;
 }
 
+.auth-form input[aria-invalid="true"] {
+  border-color: #c65a52;
+  outline: 2px solid #c65a52;
+  outline-offset: 2px;
+}
+
+.auth-form .auth-field-error {
+  margin: -0.5rem 0 0.5rem;
+  color: #8b2424;
+  font-size: 0.75rem;
+}
+
 .primary-button, .secondary-button {
   padding: 0.625rem 0.875rem;
   border: 0;
