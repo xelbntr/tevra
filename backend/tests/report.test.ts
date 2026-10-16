@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { before, after, beforeEach, test } from 'node:test'
 import type { ReportData } from '../src/reports/data.js'
+import express from 'express'
+import { once } from 'node:events'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import PizZip from 'pizzip'
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`
 const studentId = uuid(1)
@@ -85,6 +90,9 @@ const mockFetch: typeof fetch = async (input, init) => {
 let generateReport: typeof import('../src/reports/report.js').generateReport
 let buildStudentReport: typeof import('../src/reports/report.js').buildStudentReport
 let AuthenticationError: typeof import('../src/auth.js').AuthenticationError
+let renderReportDocument: typeof import('../src/reports/document.js').renderReportDocument
+let reportServer: ReturnType<express.Express['listen']>
+let reportUrl: string
 
 before(async () => {
   globalThis.fetch = mockFetch
@@ -94,9 +102,27 @@ before(async () => {
   process.env.AI_API_KEY = 'test-ai-key'
   ;({ AuthenticationError } = await import('../src/auth.js'))
   ;({ generateReport, buildStudentReport } = await import('../src/reports/report.js'))
+  ;({ renderReportDocument } = await import('../src/reports/document.js'))
+  const { reportsRouter } = await import('../src/reports/router.js')
+  const app = express()
+  app.use(express.json())
+  app.use('/api/reports', reportsRouter)
+  reportServer = app.listen(0, '127.0.0.1')
+  await once(reportServer, 'listening')
+  const address = reportServer.address()
+  if (!address || typeof address === 'string') throw new Error('Missing test server address')
+  reportUrl = `http://127.0.0.1:${address.port}/api/reports`
 })
 
-after(() => { globalThis.fetch = originalFetch })
+after(async () => {
+  globalThis.fetch = originalFetch
+  if (reportServer) {
+    const closed = once(reportServer, 'close')
+    reportServer.close()
+    reportServer.closeAllConnections()
+    await closed
+  }
+})
 
 beforeEach(() => {
   attendanceRows = [attendanceRow('present'), attendanceRow('late', 2), attendanceRow('absent', 3), attendanceRow('excused', 4)]
@@ -113,6 +139,109 @@ beforeEach(() => {
 
 const runReport = () => generateReport(accessToken, { student_id: studentId, class_id: classId })
 const aiRequests = () => requests.filter(r => r.url.pathname === '/openai/v1/chat/completions')
+
+const requestReport = (path = '', body: unknown = { class_id: classId, student_id: studentId }, token: string | null = accessToken) => originalFetch(`${reportUrl}${path}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', ...(token === null ? {} : { Authorization: `Bearer ${token}` }) },
+  body: JSON.stringify(body),
+})
+
+test('HTTP preview returns the existing report contract with private cache headers', async () => {
+  const response = await requestReport()
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('cache-control'), 'no-store')
+  const report = await response.json()
+  assert.equal(report.grade, 85)
+  assert.equal(report.attendance, 50)
+  assert.equal(report.report.title, narrative.title)
+  assert.equal(aiRequests().length, 1)
+})
+
+test('both HTTP endpoints validate authentication, selections, and enrollment access', async () => {
+  for (const path of ['', '/download']) {
+    assert.equal((await requestReport(path, {}, null)).status, 401)
+    assert.equal((await requestReport(path, { class_id: 'invalid', student_id: studentId })).status, 400)
+    authenticated = false
+    assert.equal((await requestReport(path)).status, 401)
+    authenticated = true
+    visible = false
+    const response = await requestReport(path)
+    assert.equal(response.status, 404)
+    assert.equal((await response.json()).code, 'ENROLLMENT_NOT_FOUND')
+    visible = true
+  }
+  assert.equal(aiRequests().length, 0)
+})
+
+test('both HTTP endpoints return JSON errors for database and AI failures', async () => {
+  for (const path of ['', '/download']) {
+    databaseError = true
+    let response = await requestReport(path)
+    assert.equal(response.status, 500)
+    assert.equal(response.headers.get('cache-control'), 'no-store')
+    assert.match((await response.json()).error, /Could not generate/)
+    databaseError = false
+    aiContent = 'not JSON'
+    response = await requestReport(path)
+    assert.equal(response.status, 500)
+    assert.match((await response.json()).error, /Could not generate/)
+    aiContent = JSON.stringify(narrative)
+  }
+})
+
+test('HTTP download returns a valid populated Word attachment and reads records once', async () => {
+  const response = await requestReport('/download')
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-type')!, /wordprocessingml.document/)
+  assert.match(response.headers.get('content-disposition')!, new RegExp(`${studentId}_${classId}\\.docx`))
+  assert.equal(response.headers.get('access-control-expose-headers'), 'Content-Disposition')
+  const zip = new PizZip(Buffer.from(await response.arrayBuffer()))
+  const xml = zip.file('word/document.xml')!.asText()
+  assert.ok(xml.includes('Test Student'))
+  assert.ok(xml.includes('2026001'))
+  assert.ok(xml.includes('85.00%'))
+  assert.ok(xml.includes('50.00%'))
+  assert.ok(xml.includes('Draf AI'))
+  assert.ok(!xml.includes('{{'))
+  assert.ok(!xml.includes('20%'))
+  assert.ok(!xml.includes('[LOGO SEKOLAH]'))
+  assert.equal(requests.filter(r => r.url.pathname === '/rest/v1/enrollments').length, 1)
+  assert.equal(aiRequests().length, 1)
+})
+
+test('template rendering preserves source parts, escapes text, and distinguishes zero from no data', async () => {
+  const source = readFileSync(new URL('../../docs/Template_Penilaian_Satu_Siswa_SMA_JOINTS.docx', import.meta.url))
+  const { jointsTemplateBase64, jointsTemplateSha256 } = await import('../src/reports/template.js')
+  assert.equal(createHash('sha256').update(source).digest('hex'), jointsTemplateSha256)
+  assert.deepEqual(Buffer.from(jointsTemplateBase64, 'base64'), source)
+  const records = {
+    ...enrollment, student: { ...enrollment.student, full_name: 'A & B <Student>' },
+    attendance: [attendanceRow('late')], grades: [gradeRow(0)],
+  }
+  const result = await buildStudentReport(records)
+  const document = renderReportDocument(records, result, new Date('2026-10-16T00:00:00Z'))
+  const zip = new PizZip(document)
+  const original = new PizZip(source)
+  const parts = Object.values(original.files).filter(file => !file.dir).map(file => file.name).sort()
+  assert.deepEqual(Object.values(zip.files).filter(file => !file.dir).map(file => file.name).sort(), parts)
+  for (const path of parts.filter(path => path !== 'word/document.xml')) {
+    assert.deepEqual(zip.file(path)!.asUint8Array(), original.file(path)!.asUint8Array(), path)
+  }
+  const xml = zip.file('word/document.xml')!.asText()
+  assert.ok(xml.includes('A &amp; B &lt;Student&gt;'))
+  assert.ok(xml.includes('0.00%'))
+  assert.ok(xml.includes('100.00%'))
+  assert.ok(xml.includes('16 Oktober 2026'))
+  assert.ok(xml.includes('N/A'))
+  assert.ok(xml.includes('—'))
+  assert.ok(!xml.includes('{{'))
+  const empty = { ...records, attendance: [], grades: [] }
+  const emptyResult = await buildStudentReport(empty)
+  const emptyXml = new PizZip(renderReportDocument(empty, emptyResult)).file('word/document.xml')!.asText()
+  assert.ok(!emptyXml.includes('0.00%'))
+  assert.ok(emptyXml.includes('Belum tercatat'))
+  assert.equal(createHash('sha256').update(readFileSync(new URL('../../docs/Template_Penilaian_Satu_Siswa_SMA_JOINTS.docx', import.meta.url))).digest('hex'), jointsTemplateSha256)
+})
 
 test('returns validated report and exact normalized percentages; sends only queried JSON', async () => {
   const result = await runReport()

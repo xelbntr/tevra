@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { downloadStudentGradeReport, fetchClassStudents, fetchDashboard, fetchStudentReport } from './api'
 import type { ClassStudent, DashboardClass, StudentReport } from './api'
 
@@ -13,32 +13,36 @@ export function GradingReports() {
   const [generating, setGenerating] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState('')
+  const reportRequest = useRef<AbortController | null>(null)
+  const rosterRequest = useRef<AbortController | null>(null)
+
+  useEffect(() => () => reportRequest.current?.abort(), [])
 
   useEffect(() => {
     const controller = new AbortController()
     fetchDashboard(controller.signal)
       .then(data => {
+        if (controller.signal.aborted) return
         setClasses(data.classes)
         setClassId(current => current || data.classes[0]?.id || '')
+        setLoadingStudents(data.classes.length > 0)
       })
-      .catch(reason => setError(reason instanceof Error ? reason.message : 'Could not load your classes.'))
-      .finally(() => setLoadingClasses(false))
+      .catch(reason => {
+        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Could not load your classes.')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingClasses(false)
+      })
     return () => controller.abort()
   }, [])
 
   useEffect(() => {
-    if (!classId) {
-      setStudents([])
-      setStudentId('')
-      return
-    }
+    if (!classId) return
     const controller = new AbortController()
-    setLoadingStudents(true)
-    setError('')
-    setReport(null)
-    setStudentId('')
+    rosterRequest.current = controller
     fetchClassStudents(classId, controller.signal)
       .then(rows => {
+        if (controller.signal.aborted) return
         setStudents(rows)
         setStudentId(rows[0]?.student_id ?? '')
       })
@@ -52,29 +56,36 @@ export function GradingReports() {
   }, [classId])
 
   async function generate() {
-    if (!classId || !studentId || generating || downloading) return
+    if (!classId || !studentId || loadingStudents || reportRequest.current) return
+    const controller = new AbortController()
+    reportRequest.current = controller
     setGenerating(true)
     setError('')
     setReport(null)
     try {
-      setReport(await fetchStudentReport(classId, studentId))
+      const result = await fetchStudentReport(classId, studentId, controller.signal)
+      if (!controller.signal.aborted) setReport(result)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not generate the report.')
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Could not generate the report.')
     } finally {
-      setGenerating(false)
+      if (!controller.signal.aborted) setGenerating(false)
+      if (reportRequest.current === controller) reportRequest.current = null
     }
   }
 
   async function downloadReport() {
-    if (!classId || !studentId || generating || downloading) return
+    if (!classId || !studentId || loadingStudents || reportRequest.current) return
+    const controller = new AbortController()
+    reportRequest.current = controller
     setDownloading(true)
     setError('')
     try {
-      await downloadStudentGradeReport(classId, studentId)
+      await downloadStudentGradeReport(classId, studentId, controller.signal)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not download the report.')
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Could not download the report.')
     } finally {
-      setDownloading(false)
+      if (!controller.signal.aborted) setDownloading(false)
+      if (reportRequest.current === controller) reportRequest.current = null
     }
   }
 
@@ -88,16 +99,27 @@ export function GradingReports() {
       <div className="report-selection">
         <label>
           <span>Class</span>
-          <select value={classId} disabled={loadingClasses || classes.length === 0} onChange={event => setClassId(event.target.value)}>
+          <select value={classId} disabled={loadingClasses || classes.length === 0 || generating || downloading} onChange={event => {
+            if (reportRequest.current) return
+            rosterRequest.current?.abort()
+            setStudents([])
+            setStudentId('')
+            setReport(null)
+            setError('')
+            setLoadingStudents(Boolean(event.target.value))
+            setClassId(event.target.value)
+          }}>
             {classes.length === 0 && <option value="">{loadingClasses ? 'Loading classes…' : 'No classes available'}</option>}
             {classes.map(item => <option value={item.id} key={item.id}>{item.name} · {item.course_code}</option>)}
           </select>
         </label>
         <label>
           <span>Student</span>
-          <select value={studentId} disabled={loadingStudents || students.length === 0} onChange={event => {
+          <select value={studentId} disabled={loadingStudents || students.length === 0 || generating || downloading} onChange={event => {
+            if (reportRequest.current) return
             setStudentId(event.target.value)
             setReport(null)
+            setError('')
           }}>
             {students.length === 0 && <option value="">{loadingStudents ? 'Loading students…' : 'No active students'}</option>}
             {students.map(student => <option value={student.student_id} key={student.student_id}>{student.full_name} · {student.student_number}</option>)}

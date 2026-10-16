@@ -2,7 +2,7 @@ import type { PostgrestResponse } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { authenticate } from '../auth.js'
 
-const reportInputSchema = z.object({ class_id: z.uuid(), student_id: z.uuid() })
+export const reportInputSchema = z.object({ class_id: z.uuid(), student_id: z.uuid() })
 
 // Check database records before using them for calculations or AI input.
 export const reportDataSchema = z.object({

@@ -5,6 +5,7 @@ import { askAI } from './coach.js';
 import { AuthenticationError } from './auth.js'
 import { requestDashboardData } from './dashboard.js'
 import { attendanceRouter } from './attendance.js'
+import { reportsRouter } from './reports/router.js'
 
 const app = express()
 
@@ -12,6 +13,15 @@ const app = express()
 app.use(express.json())
 app.use(cors())
 app.use('/api/attendance', attendanceRouter)
+app.use('/api/reports', reportsRouter)
+app.use('/api/reports', (error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (error instanceof SyntaxError && 'type' in error && error.type === 'entity.parse.failed') {
+    res.set('Cache-Control', 'no-store')
+    res.status(400).json({ error: 'Provide a valid JSON report selection' })
+    return
+  }
+  next(error)
+})
 
 app.get('/api/v1/health', (_req, res) => {
   res.json({ status: 'ok', message: 'Learnly backend is running' })

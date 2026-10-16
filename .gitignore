@@ -14,5 +14,6 @@ temp/
 AGENTS.md
 test/
 tests/
+!frontend/tests/
 .vercel
 .env*

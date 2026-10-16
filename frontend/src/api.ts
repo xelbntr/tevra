@@ -141,9 +141,11 @@ export async function fetchClassStudents(classId: string, signal?: AbortSignal):
   const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   let response: Response
   try {
-    const url = new URL('http://localhost:5000/api/attendance')
-    url.search = new URLSearchParams({ class_id: classId, date }).toString()
-    response = await fetch(import.meta.env.VITE_ATTENDANCE_URL?.trim() || url.toString(), {
+    const endpoint = serviceUrl(import.meta.env.VITE_ATTENDANCE_URL, '/api/attendance')
+    const url = new URL(endpoint, windowOrigin())
+    url.searchParams.set('class_id', classId)
+    url.searchParams.set('date', date)
+    response = await fetch(endpoint.startsWith('/') ? `${url.pathname}${url.search}` : url.toString(), {
       headers: { Authorization: `Bearer ${session.access_token}` },
       cache: 'no-store',
       signal,
@@ -178,7 +180,7 @@ export async function fetchStudentReport(classId: string, studentId: string, sig
 
   let response: Response
   try {
-    response = await fetch(import.meta.env.VITE_REPORT_URL?.trim() || 'http://localhost:5000/api/reports', {
+    response = await fetch(serviceUrl(import.meta.env.VITE_REPORT_URL, '/api/reports'), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
@@ -194,7 +196,7 @@ export async function fetchStudentReport(classId: string, studentId: string, sig
   }
 
   if (response.status === 401) throw new AuthenticationError()
-  if (response.status === 404) throw new Error('That student is no longer enrolled in this class.')
+  if (response.status === 404) await reportNotFound(response)
   if (!response.ok) {
     const result: unknown = await response.json().catch(() => null)
     const message = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string'
@@ -208,15 +210,18 @@ export async function fetchStudentReport(classId: string, studentId: string, sig
   return data
 }
 
-export async function downloadStudentGradeReport(classId: string, studentId: string): Promise<void> {
+export async function downloadStudentGradeReport(classId: string, studentId: string, signal?: AbortSignal): Promise<void> {
   const { data: { session }, error } = await getSupabase().auth.getSession()
   if (error) throw error
   if (!session) throw new AuthenticationError()
+  signal?.throwIfAborted()
 
-  const baseUrl = import.meta.env.VITE_REPORT_URL?.trim() || 'http://localhost:5000/api/reports'
+  const endpoint = serviceUrl(import.meta.env.VITE_REPORT_URL, '/api/reports')
+  const url = new URL(endpoint, windowOrigin())
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/download`
   let response: Response
   try {
-    response = await fetch(`${baseUrl.replace(/\/+$/, '')}/download`, {
+    response = await fetch(endpoint.startsWith('/') ? `${url.pathname}${url.search}` : url.toString(), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
@@ -224,13 +229,15 @@ export async function downloadStudentGradeReport(classId: string, studentId: str
       },
       body: JSON.stringify({ class_id: classId, student_id: studentId }),
       cache: 'no-store',
+      signal,
     })
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error
     throw new Error('Could not reach the report service. Check that the Learnly backend is running.')
   }
 
   if (response.status === 401) throw new AuthenticationError()
-  if (response.status === 404) throw new Error('That student is no longer enrolled in this class.')
+  if (response.status === 404) await reportNotFound(response)
   if (!response.ok) {
     const result: unknown = await response.json().catch(() => null)
     const message = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string'
@@ -239,13 +246,18 @@ export async function downloadStudentGradeReport(classId: string, studentId: str
     throw new Error(message)
   }
 
+  if (!response.headers.get('Content-Type')?.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
+    throw new Error('The report service returned an unexpected Word document.')
+  }
   const blob = await response.blob()
+  signal?.throwIfAborted()
   const disposition = response.headers.get('Content-Disposition') ?? ''
   const encodedFilename = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
   const plainFilename = disposition.match(/filename="?([^";]+)"?/i)?.[1]
-  const filename = encodedFilename
-    ? decodeURIComponent(encodedFilename)
-    : plainFilename || 'Laporan_Penilaian_Siswa.docx'
+  let filename = plainFilename || 'Laporan_Penilaian_Siswa.docx'
+  if (encodedFilename) {
+    try { filename = decodeURIComponent(encodedFilename) } catch { /* Keep the plain filename. */ }
+  }
   const objectUrl = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = objectUrl
@@ -254,6 +266,22 @@ export async function downloadStudentGradeReport(classId: string, studentId: str
   link.click()
   link.remove()
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+}
+
+function serviceUrl(configured: string | undefined, path: string): string {
+  return import.meta.env.PROD ? path : configured?.trim() || `http://localhost:5000${path}`
+}
+
+function windowOrigin(): string {
+  return typeof window === 'undefined' ? 'http://localhost:5000' : window.location.origin
+}
+
+async function reportNotFound(response: Response): Promise<never> {
+  const data: unknown = await response.json().catch(() => null)
+  if (isRecord(data) && data.code === 'ENROLLMENT_NOT_FOUND') {
+    throw new Error('That student enrollment was not found or is not accessible.')
+  }
+  throw new Error('The report service is unavailable. Please check the backend configuration.')
 }
 
 function isStudentReport(value: unknown): value is StudentReport {

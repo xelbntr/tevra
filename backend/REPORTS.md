@@ -1,5 +1,33 @@
 # Student reports
 
+## HTTP endpoints
+
+`POST /api/reports` previews JSON; `POST /api/reports/download` downloads the
+JOINTS Word report. Both require `Authorization: Bearer <access token>` and a JSON
+body `{ "class_id": "<UUID>", "student_id": "<UUID>" }`. Both return no-store
+responses. Errors are JSON: 400 for invalid selections, 401 for missing/invalid
+sessions, 404 with code `ENROLLMENT_NOT_FOUND` for hidden/missing enrollments,
+and 500 for database, AI, or document failures.
+
+The download uses the retained `docs/Template_Penilaian_Satu_Siswa_SMA_JOINTS.docx`.
+Its byte-identical source is embedded in `src/reports/template.ts`, so source
+bundling requires no runtime filesystem assets. Regenerate that module with
+`node backend/scripts/embed-report-template.mjs` from the repository root after
+an intentional template update. The original file is never modified.
+
+Generated documents replace the template's example weights with N/A. They show
+unweighted percentages for recorded assignment, quiz, and project categories;
+exam records are not guessed to be midterms/finals. The overall recorded average
+includes all assessments, is labelled unweighted, and is not a final grade.
+Unavailable metadata, weights, final grades, and sickness counts remain explicitly
+unavailable. Present includes late, excused is not assumed to mean sick, and zero
+remains distinguishable from missing grades. AI observations are labelled drafts
+for teacher review, not approved teacher comments. The report date uses Asia/Jakarta.
+
+Downloads expose Content-Disposition for cross-origin clients and use UUID-based
+filenames. Production clients use same-origin API paths; development supports
+VITE_ATTENDANCE_URL and VITE_REPORT_URL overrides.
+
 Call `generateReport(accessToken, { student_id, class_id })` from `src/reports/report.ts`.
 Both IDs must be UUIDs. Supabase verifies the session and applies the lecturer's
 existing row access policies. A missing or inaccessible enrollment returns `null`.
