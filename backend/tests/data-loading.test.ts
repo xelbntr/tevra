@@ -100,13 +100,15 @@ beforeEach(() => {
 })
 after(() => { globalThis.fetch = originalFetch })
 
-test('verifies signatures and reuses public signing keys without a per-request Auth call', async () => {
+test('verifies signatures, reuses signing keys, and confirms server-side user validity', async () => {
   const accessToken = token()
   assert.equal((await authenticate(accessToken)).user.id, lecturerId)
-  assert.equal(requests.length, 1)
+  assert.equal(requests.length, 2)
   assert.ok(requests[0]!.url.pathname.endsWith('/.well-known/jwks.json'))
+  assert.equal(requests[1]!.url.pathname, '/auth/v1/user')
   await authenticate(accessToken)
-  assert.equal(requests.length, 1, 'second verification is local')
+  assert.equal(requests.length, 3, 'second verification reuses keys and still checks current user state')
+  assert.equal(requests[2]!.url.pathname, '/auth/v1/user')
 })
 
 test('rejects expired, forged, anonymous, wrong-audience and wrong-issuer tokens', async () => {
@@ -123,8 +125,9 @@ test('rejects expired, forged, anonymous, wrong-audience and wrong-issuer tokens
 
 test('legacy symmetric tokens still require successful server verification', async () => {
   await authenticate(token({}, true))
-  assert.equal(requests.length, 1)
+  assert.equal(requests.length, 2)
   assert.equal(requests[0]!.url.pathname, '/auth/v1/user')
+  assert.equal(requests[1]!.url.pathname, '/auth/v1/user')
   rejectUser = true
   await assert.rejects(authenticate(token({}, true)), AuthenticationError)
 })
@@ -151,7 +154,7 @@ test('grading roster uses parallel reads and omits attendance joins', { timeout:
   assert.equal(query.get('select'), 'student:students(id,full_name,student_number)')
   assert.equal(query.get('status'), 'eq.active')
   assert.equal(query.has('attendance.attendance_date'), false)
-  assert.equal(requests.length, 2)
+  assert.equal(requests.length, 3)
 })
 
 test('access failures return no roster and capped responses cannot show misleading totals', async () => {
@@ -169,7 +172,7 @@ test('dashboard still returns the authenticated classes and exact student count'
   assert.deepEqual(await requestDashboardData(accessToken), {
     classes: [classRow], totalStudents: 2, averageGrade: 85, attendanceRate: 75,
   })
-  assert.equal(requests.length, 5)
+  assert.equal(requests.length, 6)
   assert.ok(requests.every(request => request.authorization === `Bearer ${accessToken}`))
   for (const request of requests.filter(request => /\/(grades|attendance)$/.test(request.url.pathname))) {
     assert.equal(request.url.searchParams.get('enrollment.class_id'), `in.(${classId})`)
@@ -202,7 +205,7 @@ test('dashboard avoids querying records without accessible classes and propagate
   assert.deepEqual(await requestDashboardData(token()), {
     classes: [], totalStudents: 2, averageGrade: null, attendanceRate: null,
   })
-  assert.equal(requests.length, 2)
+  assert.equal(requests.length, 3)
   visible = true
   gradeError = true
   await assert.rejects(requestDashboardData(token()))

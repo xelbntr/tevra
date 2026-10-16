@@ -24,6 +24,10 @@ export async function authenticate(accessToken: string) {
     || !(Array.isArray(claims.aud) ? claims.aud.includes('authenticated') : claims.aud === 'authenticated')) {
     throw new AuthenticationError('Invalid or expired session')
   }
+  const { data: userData, error: userError } = await verifier.auth.getUser(accessToken)
+  if (userError || userData.user?.id !== claims.sub) {
+    throw new AuthenticationError('Invalid or expired session')
+  }
 
   const db = createClient(supabaseUrl!, supabaseKey!, {
     global: {
@@ -36,5 +40,5 @@ export async function authenticate(accessToken: string) {
     },
   })
 
-  return { db, user: { id: claims.sub } }
+  return { db, user: { id: userData.user.id } }
 }
