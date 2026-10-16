@@ -118,11 +118,11 @@ function Dashboard({ email }: { email: string | undefined }) {
 
   return (
     <main className="app-frame">
-      <section className="dashboard-shell" aria-label="Learnly dashboard">
+      <section className={`dashboard-shell${isDashboard ? ' dashboard-home' : ''}`} aria-label="Tevra dashboard">
         <header className="topbar">
-          <a className="brand-mark" href="/dashboard" aria-label="Learnly home" onClick={(event) => navigate(event, '/dashboard')}>
-            <span className="brand-symbol">L</span>
-            <span className="brand-name">learnly</span>
+          <a className="brand-mark" href="/dashboard" aria-label="Tevra home" onClick={(event) => navigate(event, '/dashboard')}>
+            <span className="brand-symbol">T</span>
+            <span className="brand-name">tevra</span>
           </a>
           <div className="account-controls">
             <span className="account-email" title={email}>{email}</span>
@@ -152,13 +152,15 @@ function Dashboard({ email }: { email: string | undefined }) {
           <div className="dashboard-content">
             <div className="heading-row">
               <div>
-                <p className="eyebrow">{isDashboard ? 'YOUR CLASSROOM AT A GLANCE' : 'LEARNLY CLASSROOM'}</p>
+                <p className="eyebrow">{isDashboard ? 'YOUR CLASSROOM AT A GLANCE' : 'TEVRA CLASSROOM'}</p>
                 <h1>{currentPage?.label ?? (isDashboard ? 'Dashboard' : 'Page not found')}</h1>
               </div>
               {isDashboard && <span className="today-pill">Overview</span>}
             </div>
 
-            {isDashboard ? (
+            {/* Keep data views mounted: switching tabs preserves selections and renders
+                loaded content immediately. Their shared requests are deduplicated. */}
+            <div hidden={!isDashboard}>
               <>
                 <form className="ask-bar" onSubmit={askAssistant}>
                   <label className="sr-only" htmlFor="ask-ai">Ask AI</label>
@@ -175,34 +177,33 @@ function Dashboard({ email }: { email: string | undefined }) {
 
                 <section className="quick-actions" aria-label="Quick actions">
                   <button className="action-card" type="button" onClick={() => showNotice('Report generation is coming soon.')}>
-                    <span className="action-icon"><Icon name="report" size={17} /></span>
+                    <span className="action-icon"><img src="/dashboard/report.svg" alt="" /></span>
                     <span className="action-label">Generate Report</span>
-                    <span className="action-arrow"><Icon name="arrow" size={15} /></span>
+                    <span className="action-arrow"><img src="/dashboard/arrow.svg" alt="" /></span>
                   </button>
                   <button className="action-card" type="button" onClick={() => showNotice('Quick grading is coming soon.')}>
-                    <span className="action-icon"><Icon name="paper" size={17} /></span>
+                    <span className="action-icon"><img src="/dashboard/grading.svg" alt="" /></span>
                     <span className="action-label">Quick Grading</span>
-                    <span className="action-arrow"><Icon name="arrow" size={15} /></span>
+                    <span className="action-arrow"><img src="/dashboard/arrow.svg" alt="" /></span>
                   </button>
                 </section>
               </>
-            ) : isAttendance ? (
-              <AttendancePage />
-            ) : isAssistant ? (
+            </div>
+            <div hidden={!isAttendance}><AttendancePage /></div>
+            <div hidden={!isGradingReports}><GradingReports /></div>
+            {isAssistant ? (
               <AssistantChat
                 initialPrompt={assistantPrompt}
                 onInitialPromptHandled={() => setAssistantPrompt('')}
               />
-            ) : isGradingReports ? (
-              <GradingReports />
-            ) : (
+            ) : !isDashboard && !isAttendance && !isGradingReports ? (
               <section className="coming-soon" aria-live="polite">
                 <div className="coming-soon-icon"><Icon name={currentPage?.icon ?? 'book'} size={25} /></div>
                 <h2>{currentPage ? `${currentPage.label} is coming soon` : 'This page is coming soon'}</h2>
-                <p>We’re getting this part of Learnly ready. Check back soon.</p>
+                <p>We’re getting this part of Tevra ready. Check back soon.</p>
                 <a href="/dashboard" onClick={(event) => navigate(event, '/dashboard')}>Back to dashboard</a>
               </section>
-            )}
+            ) : null}
           </div>
         </div>
         {notice && <div className="notice" role="status">{notice}</div>}
@@ -269,11 +270,11 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled }: {
         )}
         {messages.map((message, index) => (
           <article className={`chat-message chat-message-${message.role}`} key={`${index}-${message.role}`}>
-            <span className="chat-speaker">{message.role === 'user' ? 'You' : 'Learnly AI'}</span>
+            <span className="chat-speaker">{message.role === 'user' ? 'You' : 'Tevra AI'}</span>
             <p>{message.content}</p>
           </article>
         ))}
-        {loading && <p className="chat-pending" role="status">Learnly AI is thinking…</p>}
+        {loading && <p className="chat-pending" role="status">Tevra AI is thinking…</p>}
       </div>
       {error && <p className="error-message chat-error" role="alert">{error}</p>}
       <form className="assistant-composer" onSubmit={submit}>
@@ -331,16 +332,18 @@ function DashboardRequest({ onRetry }: { onRetry: () => void }) {
   if (!dashboard) return <p role="status">Loading your dashboard…</p>
 
   const metrics = [
-    { label: 'Students', value: dashboard.totalStudents, icon: 'person' },
+    { label: 'Students', value: dashboard.totalStudents, icon: 'person', asset: '/dashboard/students.svg' },
     { label: 'Courses', value: dashboard.classes.length, icon: 'book' },
-  ] satisfies { label: string; value: number; icon: IconName }[]
+    { label: 'Average Grade', value: dashboard.averageGrade == null ? '—' : dashboard.averageGrade.toFixed(1), icon: 'report', asset: '/dashboard/grade.svg' },
+    { label: 'Attendance Rate', value: dashboard.attendanceRate == null ? '—' : `${dashboard.attendanceRate}%`, icon: 'calendar', asset: '/dashboard/attendance.svg' },
+  ] satisfies { label: string; value: number | string; icon: IconName; asset?: string }[]
 
   return (
     <>
       <section className="metrics-grid" aria-label="Class statistics">
-        {metrics.map((metric, index) => (
-          <article className={`metric-card metric-card-${index + 1}`} key={metric.label}>
-            <span className="metric-icon"><Icon name={metric.icon} size={16} /></span>
+        {metrics.map((metric) => (
+          <article className="metric-card" key={metric.label}>
+            <span className="metric-icon">{metric.asset ? <img src={metric.asset} alt="" /> : <Icon name={metric.icon} size={24} />}</span>
             <div className="metric-copy">
               <p className="metric-value">{metric.value}</p>
               <h2>{metric.label}</h2>

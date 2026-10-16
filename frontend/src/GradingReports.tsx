@@ -3,6 +3,11 @@ import { downloadStudentGradeReport, fetchClassStudents, fetchDashboard, fetchSt
 import type { ClassStudent, DashboardClass, StudentReport } from './api'
 
 export function GradingReports() {
+  const [retry, setRetry] = useState(0)
+  return <GradingReportsRequest key={retry} onRetry={() => setRetry(value => value + 1)} />
+}
+
+function GradingReportsRequest({ onRetry }: { onRetry: () => void }) {
   const [classes, setClasses] = useState<DashboardClass[]>([])
   const [classId, setClassId] = useState('')
   const [students, setStudents] = useState<ClassStudent[]>([])
@@ -133,7 +138,12 @@ export function GradingReports() {
         </button>
       </div>
 
-      {error && <p className="error-message report-error" role="alert">{error}</p>}
+      {error && <div className="error-message report-error" role="alert">
+        <p>{error}</p>
+        {(classes.length === 0 || (classId && students.length === 0)) && (
+          <button className="secondary-button" type="button" onClick={onRetry}>Try again</button>
+        )}
+      </div>}
       {!error && !loadingClasses && classes.length === 0 && <p className="report-empty">Your account has no classes to report on yet.</p>}
       {!error && !loadingStudents && classId && students.length === 0 && <p className="report-empty">This class has no active students.</p>}
       {(generating || downloading) && <p className="report-empty" role="status">{downloading ? 'Creating the Word report for this student...' : 'Reviewing this student’s recorded information...'}</p>}

@@ -6,6 +6,7 @@ import { createServer } from 'vite'
 let server
 let api
 let auth
+let cache
 const payload = {
   classes: [{ id: 'class-1', name: 'Programming', course_code: 'CS101', academic_year: '2026/2027', semester: '1' }],
   totalStudents: 7,
@@ -28,12 +29,14 @@ before(async () => {
     ssr: { noExternal: true },
   })
   api = await server.ssrLoadModule('/src/api.ts')
+  ;({ sessionCache: cache } = await server.ssrLoadModule('/src/sessionCache.ts'))
   const { getSupabase } = await server.ssrLoadModule('/src/supabase.ts')
   auth = getSupabase().auth
 })
 
 beforeEach(() => {
-  mock.method(auth, 'getSession', async () => ({ data: { session: { access_token: 'token-1' } }, error: null }))
+  cache.clear()
+  mock.method(auth, 'getSession', async () => ({ data: { session: { user: { id: 'user-1' }, access_token: 'token-1' } }, error: null }))
 })
 afterEach(() => mock.restoreAll())
 after(async () => { await server?.close() })
@@ -46,7 +49,10 @@ test('sends the current token and reads class rows and student totals', async ()
   assert.equal(options.headers.Authorization, 'Bearer token-1')
   assert.equal(options.cache, 'no-store')
 
-  auth.getSession.mock.mockImplementation(async () => ({ data: { session: { access_token: 'token-2' } }, error: null }))
+  auth.getSession.mock.mockImplementation(async () => ({ data: { session: { user: { id: 'user-1' }, access_token: 'token-2' } }, error: null }))
+  await api.fetchDashboard()
+  assert.equal(request.mock.callCount(), 1, 'token refresh retains the session cache')
+  cache.clear()
   await api.fetchDashboard()
   assert.equal(request.mock.calls[1].arguments[1].headers.Authorization, 'Bearer token-2')
 })
@@ -56,9 +62,9 @@ test('loads the authenticated class roster for grading and reports', async () =>
   const request = mock.method(globalThis, 'fetch', async () => Response.json(roster))
   assert.deepEqual(await api.fetchClassStudents('class-1'), roster.students)
   const [url, options] = request.mock.calls[0].arguments
-  assert.match(url, /^http:\/\/localhost:5000\/api\/attendance\?/)
+  assert.match(url, /^http:\/\/localhost:5000\/api\/attendance\/roster\?/)
   assert.match(url, /class_id=class-1/)
-  assert.match(url, /date=\d{4}-\d{2}-\d{2}/)
+  assert.equal(new URL(url).searchParams.has('date'), false)
   assert.equal(options.headers.Authorization, 'Bearer token-1')
   assert.equal(options.cache, 'no-store')
 })
@@ -104,6 +110,27 @@ test('allows an empty dashboard without inventing statistics', async () => {
   assert.deepEqual(await api.fetchDashboard(), { classes: [], totalStudents: 0 })
 })
 
+test('validates dashboard grade and attendance metrics while allowing missing records', async () => {
+  const request = mock.method(globalThis, 'fetch')
+  for (const metrics of [
+    { averageGrade: 82.5, attendanceRate: 94 },
+    { averageGrade: 0, attendanceRate: 0 },
+    { averageGrade: null, attendanceRate: null },
+  ]) {
+    cache.clear()
+    request.mock.mockImplementation(async () => Response.json({ ...payload, ...metrics }))
+    assert.deepEqual(await api.fetchDashboard(), { ...payload, ...metrics })
+  }
+  for (const metrics of [
+    { averageGrade: '82.5' }, { averageGrade: -1 },
+    { attendanceRate: '94%' }, { attendanceRate: 101 }, { attendanceRate: -1 },
+  ]) {
+    cache.clear()
+    request.mock.mockImplementation(async () => Response.json({ ...payload, ...metrics }))
+    await assert.rejects(api.fetchDashboard(), /unexpected dashboard response/)
+  }
+})
+
 test('handles expired sessions, permissions, and server failures', async () => {
   const request = mock.method(globalThis, 'fetch', async () => new Response(null, { status: 401 }))
   await assert.rejects(api.fetchDashboard(), api.AuthenticationError)
@@ -129,16 +156,68 @@ test('reports network failure without exposing request details', async () => {
   await assert.rejects(api.fetchDashboard(), /Could not reach the server/)
 })
 
-test('cancels requests when the dashboard unmounts', async () => {
+test('cancelling one dashboard subscriber leaves the shared request alive', async () => {
   const controller = new AbortController()
   let requestSignal
+  let complete
   mock.method(globalThis, 'fetch', async (_url, { signal }) => {
     requestSignal = signal
-    controller.abort()
-    signal.throwIfAborted()
+    return new Promise(resolve => { complete = () => resolve(Response.json(payload)) })
   })
-  await assert.rejects(api.fetchDashboard(controller.signal), { name: 'AbortError' })
-  assert.equal(requestSignal, controller.signal)
+  const cancelled = api.fetchDashboard(controller.signal)
+  const active = api.fetchDashboard()
+  await new Promise(resolve => setImmediate(resolve))
+  controller.abort()
+  await assert.rejects(cancelled, { name: 'AbortError' })
+  assert.equal(requestSignal.aborted, false)
+  complete()
+  assert.deepEqual(await active, payload)
+})
+
+test('concurrent tabs and repeat reads share exactly one dashboard request', async () => {
+  const request = mock.method(globalThis, 'fetch', async () => Response.json(payload))
+  await Promise.all(Array.from({ length: 10 }, () => api.fetchDashboard()))
+  for (let i = 0; i < 20; i++) await api.fetchDashboard()
+  assert.equal(request.mock.callCount(), 1)
+})
+
+test('switching accounts and signing out evict private data', async () => {
+  const request = mock.method(globalThis, 'fetch', async () => Response.json(payload))
+  await api.fetchDashboard()
+  auth.getSession.mock.mockImplementation(async () => ({ data: { session: { user: { id: 'user-2' }, access_token: 'other-token' } }, error: null }))
+  await api.fetchDashboard()
+  assert.equal(request.mock.callCount(), 2)
+  assert.equal(request.mock.calls[1].arguments[1].headers.Authorization, 'Bearer other-token')
+  auth.getSession.mock.mockImplementation(async () => ({ data: { session: null }, error: null }))
+  await assert.rejects(api.fetchDashboard(), api.AuthenticationError)
+  auth.getSession.mock.mockImplementation(async () => ({ data: { session: { user: { id: 'user-2' }, access_token: 'new-token' } }, error: null }))
+  await api.fetchDashboard()
+  assert.equal(request.mock.callCount(), 3)
+})
+
+test('late responses from a signed-out session cannot repopulate the cache', async () => {
+  let complete
+  mock.method(globalThis, 'fetch', async () => new Promise(resolve => { complete = () => resolve(Response.json(payload)) }))
+  const pending = api.fetchDashboard()
+  await new Promise(resolve => setImmediate(resolve))
+  cache.setOwner(null)
+  complete()
+  await assert.rejects(pending, { name: 'AbortError' })
+  const request = mock.method(globalThis, 'fetch', async () => Response.json(payload))
+  await api.fetchDashboard()
+  assert.equal(request.mock.callCount(), 1)
+})
+
+test('a delayed local-session read cannot restore data after sign-out', async () => {
+  cache.setOwner('user-1')
+  let completeSession
+  auth.getSession.mock.mockImplementation(() => new Promise(resolve => { completeSession = resolve }))
+  const request = mock.method(globalThis, 'fetch', async () => Response.json(payload))
+  const pending = api.fetchDashboard()
+  cache.setOwner(null)
+  completeSession({ data: { session: { user: { id: 'user-1' }, access_token: 'old-token' } }, error: null })
+  await assert.rejects(pending, { name: 'AbortError' })
+  assert.equal(request.mock.callCount(), 0)
 })
 
 test('posts the current prompt to the backend submit route and reads its completion', async () => {

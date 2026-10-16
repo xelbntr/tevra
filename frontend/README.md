@@ -1,4 +1,4 @@
-# Learnly frontend
+# Tevra frontend
 
 ## Authentication and dashboard
 

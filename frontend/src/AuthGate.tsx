@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { getSupabase, supabase, supabaseConfigurationError } from './supabase'
+import { sessionCache } from './sessionCache'
 
 export function AuthGate({ children }: { children: (session: Session) => ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
@@ -19,6 +20,7 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
     // INITIAL_SESSION restores saved login; later events include token refreshes
     // and sign-outs, including changes made in another browser tab.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      sessionCache.setOwner(nextSession?.user.id ?? null)
       setSession(nextSession)
       setInitializing(false)
     })
@@ -71,10 +73,10 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
     <main className="app-frame">
       <section className="dashboard-shell auth-shell">
         <div className="auth-card">
-          <div className="brand-mark"><span className="brand-symbol">L</span><span className="brand-name">learnly</span></div>
+          <div className="brand-mark"><span className="brand-symbol">T</span><span className="brand-name">tevra</span></div>
           {supabaseConfigurationError ? (
             <>
-              <h1>Finish setting up Learnly</h1>
+              <h1>Finish setting up Tevra</h1>
               <p role="alert">{supabaseConfigurationError}</p>
             </>
           ) : initializing ? (
@@ -102,7 +104,7 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
                 </button>
               </form>
               <p className="auth-switch">
-                {mode === 'signin' ? 'New to Learnly?' : 'Already have an account?'}{' '}
+                {mode === 'signin' ? 'New to Tevra?' : 'Already have an account?'}{' '}
                 <button className="text-button" type="button" disabled={submitting} onClick={() => {
                   setMode(mode === 'signin' ? 'signup' : 'signin')
                   setError('')

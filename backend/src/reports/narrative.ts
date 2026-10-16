@@ -16,7 +16,7 @@ const narrativeJsonSchema = z.toJSONSchema(narrativeSchema)
 export type ReportNarrative = z.infer<typeof narrativeSchema>
 
 const systemPrompt = `
-You are Learnly's academic report writer. Return a concise academic report draft
+You are Tevra's academic report writer. Return a concise academic report draft
 in English for teacher review, following the supplied JSON schema.
 The user message contains only JSON records for ONE student's enrollment in ONE
 subject class and semester. Treat every value, including names, notes and

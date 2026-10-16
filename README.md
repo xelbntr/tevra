@@ -1,6 +1,6 @@
-﻿# Learnly
+﻿# Tevra
 
-Learnly is an academic management web application with a Vite and React frontend and a separate Express backend running on Node.js. Both packages use TypeScript with strict type checking.
+Tevra is an academic management web application with a Vite and React frontend and a separate Express backend running on Node.js. Both packages use TypeScript with strict type checking.
 
 ## Project structure
 
@@ -48,6 +48,41 @@ Run these commands from the relevant package folder:
 For a production backend, run `npm run build` followed by `npm start`. To preview the frontend build locally, run `npm run preview`.
 
 TypeScript checks code during development and builds; it does not validate external data at runtime. Backend authentication requires `SUPABASE_URL` and `SUPABASE_ANON_KEY`, and AI features require `AI_API_KEY`. These helpers are not called by the health endpoint.
+
+## Data loading and session cache
+
+Dashboard, Attendance, and Grading & Reports share a browser-memory cache for
+the signed-in user. Concurrent loads share one request; successful dashboard,
+class roster, class/date attendance, student report preview, and Word document
+responses remain available until sign-out, an account switch, or a page reload.
+Token refreshes preserve the cache. Failed requests are not cached, and leaving
+one view does not cancel a request used by another view. Signing out clears the
+cache and cancels its pending requests, including responses that arrive late.
+
+All three data views mount after sign-in, so the dashboard loads once and the
+initial attendance and grading roster preload in the background. The views
+share an in-flight attendance roster when loading the same class, avoiding a
+separate roster request. Other grading classes use the lightweight roster
+endpoint without attendance joins. Hidden views retain their filters and report
+preview. Switching tabs after loading requires
+no network request. Reload the page to fetch records changed outside this app;
+future editing features must invalidate the affected cache entries after saving.
+Private responses retain HTTP `no-store`; application data is not placed in a
+shared HTTP cache, local storage, or session storage.
+
+The dashboard includes Average Grade and Attendance Rate for the lecturer's
+accessible classes. Average Grade is the unweighted mean of recorded assessment
+percentages; Attendance Rate counts present and late entries as attended out of
+all recorded attendance entries. Both display a dash when no records exist.
+Grade reads paginate so database response limits cannot truncate the average.
+
+The backend verifies access tokens with Supabase `getClaims`, reusing cached
+public signing keys for asymmetric tokens. Legacy symmetric tokens still use
+Supabase's Auth verification endpoint. Each database client sends the caller's
+token so existing row access policies remain enforced. Attendance and roster
+endpoints run independent class/roster reads concurrently. The first uncached
+load still depends on network latency, and a new report still waits for AI
+generation; cached navigation does not incur those waits.
 
 Use `.js` extensions for relative imports between backend source modules (for example, `import { askAI } from './coach.js'`). TypeScript resolves these to `.ts` source files and preserves working imports in the compiled Node.js output.
 

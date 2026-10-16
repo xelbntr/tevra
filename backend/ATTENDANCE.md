@@ -6,9 +6,15 @@ Send `Authorization: Bearer <Supabase access token>`. Both query parameters are
 required. This endpoint only reads data; it does not save attendance or implement
 the Figma popups. Class IDs are available from the existing `GET /api/dashboard`.
 
-The code is in `src/attendance.ts`: verify the session, find the lecturer's class,
-read its active roster with that day's attendance, then count the statuses.
+The code is in `src/attendance.ts`: verify the session, then find the lecturer's
+class and read its active roster with that day's attendance concurrently before
+counting the statuses.
 It reuses the existing authentication helper and row access policies.
+
+`GET /api/attendance/roster?class_id=<class UUID>` uses the same authentication
+and class access checks, but returns only `{ students: [{ student_id,
+student_number, full_name }] }` for active enrollments. Grading & Reports uses
+this lightweight endpoint without loading attendance records or summaries.
 
 Example response for a class with one present student and one unmarked student:
 

@@ -4,6 +4,7 @@
 }
 
 .dashboard-shell {
+  --section-gap: 0.75rem;
   position: relative;
   min-height: 100vh;
   overflow: hidden;
@@ -12,6 +13,12 @@
     radial-gradient(ellipse at 23% 24%, rgba(213, 216, 221, 0.92), transparent 57%),
     linear-gradient(118deg, #d9dadd 0%, #ece5d8 50%, #f6e5c3 100%);
   color: #332719;
+}
+
+.dashboard-home {
+  --dashboard-card-background: rgba(255, 255, 255, 0.5);
+  --dashboard-card-radius: 20px;
+  --dashboard-card-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
 .topbar {
@@ -70,9 +77,10 @@
 
 .dashboard-layout {
   display: grid;
-  grid-template-columns: 3.5rem minmax(0, 35.375rem);
+  grid-template-columns: 3.5rem minmax(0, 1fr);
   column-gap: 1.625rem;
-  width: min(40.5rem, calc(100% - 3.125rem));
+  /* Available page width controls the statistic cards' size. */
+  width: calc(100% - 3.125rem);
   margin: 1.75rem 0 3.5rem 1.375rem;
 }
 
@@ -194,26 +202,25 @@ h1 {
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.3125rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .metric-card {
   position: relative;
   display: flex;
-  min-height: 11.625rem;
+  min-width: 0;
+  container-type: inline-size;
+  /* Each card fills its grid column and keeps the same width and height. */
+  aspect-ratio: 1;
   align-items: flex-end;
-  padding: 0.875rem 1.0625rem 0.9375rem;
+  padding: 20px;
   overflow: hidden;
-  border: 0.0625rem solid rgba(255, 255, 255, 0.38);
-  border-radius: 0.8125rem;
-  background: rgba(255, 255, 255, 0.57);
-  box-shadow: 0 0.1875rem 0.5rem rgba(74, 56, 30, 0.1);
+  border: 0;
+  border-radius: var(--dashboard-card-radius);
+  background: var(--dashboard-card-background);
+  box-shadow: var(--dashboard-card-shadow);
   box-sizing: border-box;
-}
-
-.metric-card-3 {
-  background: rgba(255, 248, 230, 0.67);
 }
 
 .metric-icon {
@@ -225,21 +232,23 @@ h1 {
 
 .metric-copy {
   min-width: 0;
+  width: 100%;
 }
 
 .metric-value {
   margin: 0;
   color: #362719;
-  font-size: clamp(2.6875rem, 6.2vw, 3.125rem);
+  /* Figma uses an 86:24 number-to-title ratio (about 3.6:1). */
+  font-size: clamp(34px, 25.3cqi, 86px);
   font-weight: 600;
-  letter-spacing: -0.15625rem;
+  letter-spacing: -2px;
   line-height: 0.98;
 }
 
 .metric-card h2 {
   margin: 0.1875rem 0 0;
   color: #493a29;
-  font-size: 0.75rem;
+  font-size: clamp(12px, 7.06cqi, 24px);
   font-weight: 600;
   letter-spacing: -0.00625rem;
   line-height: 1.2;
@@ -248,23 +257,25 @@ h1 {
 .quick-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.3125rem;
-  margin-top: 0.3125rem;
+  width: min(100%, 788px);
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .action-card {
   position: relative;
   display: flex;
-  min-height: 3.75rem;
+  min-width: 0;
+  min-height: 110px;
   flex-direction: column;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 0.5625rem 0.625rem 0.5625rem;
-  border: 0.0625rem solid rgba(255, 255, 255, 0.4);
-  border-radius: 0.75rem;
+  padding: 16px;
+  border: 0;
+  border-radius: var(--dashboard-card-radius);
   background: rgba(255, 249, 235, 0.63);
   color: #3e2d1d;
-  box-shadow: 0 0.1875rem 0.5rem rgba(74, 56, 30, 0.09);
+  box-shadow: var(--dashboard-card-shadow);
   cursor: pointer;
   text-align: left;
   transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
@@ -282,18 +293,18 @@ h1 {
 }
 
 .action-label {
-  font-size: 0.75rem;
+  font-size: 24px;
   font-weight: 600;
   letter-spacing: -0.0125rem;
 }
 
 .action-arrow {
   position: absolute;
-  top: 0.5625rem;
-  right: 0.5625rem;
+  top: 16px;
+  right: 16px;
   display: grid;
-  width: 1.0625rem;
-  height: 1.0625rem;
+  width: 32px;
+  height: 32px;
   place-items: center;
   border-radius: 0.25rem;
   color: #efa629;
@@ -462,7 +473,7 @@ button:disabled { cursor: wait; opacity: 0.65; }
 .account-email { max-width: min(32vw, 15rem); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; }
 .account-controls button { flex-shrink: 0; }
 .dashboard-message, .class-list {
-  margin: 0.75rem 0;
+  margin: var(--section-gap) 0;
   padding: 1rem;
   border-radius: 0.8125rem;
   background: rgba(255, 255, 255, 0.55);
@@ -474,7 +485,17 @@ button:disabled { cursor: wait; opacity: 0.65; }
 .class-list li { padding: 0.75rem 0; border-top: 0.0625rem solid rgba(105, 83, 50, 0.12); }
 .class-list h3 { margin: 0; font-size: 0.875rem; }
 .class-list li p { margin: 0.3125rem 0 0; }
-.grading-page { display: grid; gap: 0.875rem; }
+.dashboard-home .class-list {
+  padding: 24px;
+  border-radius: var(--dashboard-card-radius);
+  background: var(--dashboard-card-background);
+  box-shadow: var(--dashboard-card-shadow);
+}
+.dashboard-home .class-list h2 { color: #382717; font-size: 24px; }
+.dashboard-home .class-list ul { display: grid; gap: 8px; }
+.dashboard-home .class-list h3 { font-size: 18px; }
+.dashboard-home .class-list p { font-size: 16px; }
+.grading-page { display: grid; gap: var(--section-gap); }
 .grading-intro, .report-selection, .report-section, .report-metrics article {
   border: 0.0625rem solid rgba(105, 83, 50, 0.1);
   border-radius: 0.8125rem;
@@ -489,15 +510,15 @@ button:disabled { cursor: wait; opacity: 0.65; }
 .report-selection select { width: 100%; min-height: 2.4375rem; padding: 0 0.625rem; border: 0.0625rem solid rgba(89, 69, 41, 0.2); border-radius: 0.5rem; background: rgba(255,255,255,.78); color: #3b2b1b; font: inherit; font-weight: 500; }
 .report-selection .primary-button { min-height: 2.4375rem; white-space: nowrap; }
 .report-error, .report-empty { margin: 0; padding: 0.875rem 1rem; border-radius: 0.625rem; background: rgba(255,255,255,.55); font-size: 0.8125rem; line-height: 1.5; }
-.student-report { display: grid; gap: 0.75rem; }
-.report-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5625rem; }
+.student-report { display: grid; gap: var(--section-gap); }
+.report-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--section-gap) 0.5625rem; }
 .report-metrics article { display: grid; align-content: start; gap: 0.3125rem; min-height: 6.25rem; padding: 0.8125rem; }
 .report-metrics span, .report-metrics small { color: #74664f; font-size: 0.625rem; line-height: 1.4; }
 .report-metrics strong { color: #3d2b16; font-size: 1.3125rem; letter-spacing: -0.03125rem; }
 .report-section { padding: 1rem; }
 .report-section h3 { margin: 0.875rem 0 0; color: #594426; font-size: 0.75rem; }
 .report-section h2 + h3 { margin-top: 0.8125rem; }
-.report-columns { display: grid; grid-template-columns: 1fr; gap: 0.625rem; }
+.report-columns { display: grid; grid-template-columns: 1fr; gap: var(--section-gap); }
 .report-list h3 { margin: 0; font-size: 0.8125rem; }
 .report-list ul { display: grid; gap: 0.4375rem; margin: 0.625rem 0 0; padding-left: 1.1875rem; color: #66573f; font-size: 0.75rem; line-height: 1.55; }
 .report-list p { margin-top: 0.5rem; }
@@ -506,6 +527,10 @@ button:disabled { cursor: wait; opacity: 0.65; }
 @keyframes notice-in {
   from { opacity: 0; transform: translateY(0.375rem); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 1100px) {
+  .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 620px) {
@@ -526,11 +551,12 @@ button:disabled { cursor: wait; opacity: 0.65; }
   .heading-row { margin-bottom: 0.8125rem; }
   .eyebrow { font-size: 0.5rem; letter-spacing: 0.0625rem; }
   .today-pill { padding: 0.25rem 0.5rem; }
-  .metric-card { min-height: 9.375rem; padding: 0.75rem 0.6875rem; }
-  .metric-value { font-size: clamp(2.125rem, 10vw, 2.8125rem); letter-spacing: -0.125rem; }
-  .metric-card h2 { font-size: 0.625rem; }
+  .metric-card { padding: 16px; }
+  .metric-value { letter-spacing: -1px; }
   .metric-icon { top: 0.625rem; right: 0.5625rem; }
-  .action-card { min-height: 4rem; padding: 0.5625rem; }
+  .action-card { min-height: 110px; padding: 12px; }
+  .action-label { font-size: 18px; }
+  .action-arrow { top: 12px; right: 12px; }
   .assistant-panel { min-height: 26.25rem; padding: 0.75rem; }
   .chat-transcript { max-height: 55vh; }
   .composer-footer { align-items: flex-end; }
@@ -541,10 +567,8 @@ button:disabled { cursor: wait; opacity: 0.65; }
 
 @media (max-width: 380px) {
   .dashboard-layout { margin-right: 0.75rem; margin-left: 0.75rem; }
-  .metrics-grid { gap: 0.25rem; }
-  .metric-card { min-height: 8.25rem; padding: 0.625rem 0.5rem; }
-  .metric-value { font-size: 2.125rem; }
-  .metric-card h2 { font-size: 0.5625rem; }
+  .metric-card { padding: 12px; }
+  .action-label { font-size: 16px; }
   .today-pill { display: none; }
 }
 
@@ -552,7 +576,8 @@ button:disabled { cursor: wait; opacity: 0.65; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
-.attendance-page { display: grid; gap: 0.75rem; min-width: 0; }
+.attendance-page { display: grid; gap: var(--section-gap); min-width: 0; }
+.attendance-results { display: grid; gap: var(--section-gap); }
 .attendance-toolbar, .attendance-overview, .attendance-recap, .attendance-roster, .attendance-empty, .attendance-message {
   border: 0.0625rem solid rgba(105, 83, 50, 0.1);
   border-radius: 0.8125rem;

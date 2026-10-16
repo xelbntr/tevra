@@ -24,7 +24,7 @@ app.use('/api/reports', (error: unknown, _req: express.Request, res: express.Res
 })
 
 app.get('/api/v1/health', (_req, res) => {
-  res.json({ status: 'ok', message: 'Learnly backend is running' })
+  res.json({ status: 'ok', message: 'Tevra backend is running' })
 })
 
 const port = process.env.PORT || 5000

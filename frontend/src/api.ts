@@ -1,4 +1,5 @@
 import { getSupabase } from './supabase'
+import { sessionCache } from './sessionCache'
 
 export type DashboardClass = {
   id: string
@@ -11,6 +12,8 @@ export type DashboardClass = {
 export type DashboardData = {
   classes: DashboardClass[]
   totalStudents: number
+  averageGrade?: number | null
+  attendanceRate?: number | null
 }
 
 export type ClassStudent = {
@@ -89,7 +92,7 @@ export async function sendAssistantMessage(text: string, signal?: AbortSignal): 
     )
   } catch (error) {
     if (signal?.aborted) throw error
-    throw new Error('Could not reach the AI service. Make sure the Learnly backend is running.')
+    throw new Error('Could not reach the AI service. Make sure the Tevra backend is running.')
   }
 
   const data: unknown = await response.json().catch(() => null)
@@ -121,6 +124,9 @@ function isDashboardData(value: unknown): value is DashboardData {
   if (!value || typeof value !== 'object') return false
   const data = value as Record<string, unknown>
   return Number.isSafeInteger(data.totalStudents) && (data.totalStudents as number) >= 0
+    && ['averageGrade', 'attendanceRate'].every(key => data[key] === undefined || data[key] === null
+      || (typeof data[key] === 'number' && Number.isFinite(data[key]) && data[key] >= 0
+        && (key !== 'attendanceRate' || data[key] <= 100)))
     && Array.isArray(data.classes) && data.classes.every((item: unknown) => {
       if (!item || typeof item !== 'object') return false
       const row = item as Record<string, unknown>
@@ -129,19 +135,38 @@ function isDashboardData(value: unknown): value is DashboardData {
     })
 }
 
-export async function fetchDashboard(signal?: AbortSignal): Promise<DashboardData> {
-  // Read the current session each time so refreshed tokens are used.
-  const { data: { session }, error } = await getSupabase().auth.getSession()
-  if (error) throw error
-  if (!session) throw new AuthenticationError()
+async function cachedRequest<T>(key: string, loader: (accessToken: string, signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
   signal?.throwIfAborted()
+  const cacheVersion = sessionCache.version
+  // Check the current local session even on cache hits; never reuse another user's data.
+  const { data: { session }, error } = await getSupabase().auth.getSession()
+  if (error) {
+    if (cacheVersion === sessionCache.version) sessionCache.setOwner(null)
+    throw error
+  }
+  if (!session) {
+    if (cacheVersion === sessionCache.version) sessionCache.setOwner(null)
+    throw new AuthenticationError()
+  }
+  signal?.throwIfAborted()
+  if (!sessionCache.accepts(cacheVersion)) {
+    throw new DOMException('The signed-in session changed', 'AbortError')
+  }
+  sessionCache.setOwner(session.user.id)
+  return sessionCache.load(key, internalSignal => loader(session.access_token, internalSignal), signal)
+}
 
+export function fetchDashboard(signal?: AbortSignal): Promise<DashboardData> {
+  return cachedRequest('dashboard', loadDashboard, signal)
+}
+
+async function loadDashboard(accessToken: string, signal: AbortSignal): Promise<DashboardData> {
   let response: Response
   try {
     response = await fetch(
       (import.meta.env.PROD ? '/api/dashboard' : import.meta.env.VITE_DASHBOARD_URL?.trim() || 'http://localhost:5000/api/dashboard'),
       {
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
         cache: 'no-store',
         signal,
       },
@@ -162,28 +187,41 @@ export async function fetchDashboard(signal?: AbortSignal): Promise<DashboardDat
   return data
 }
 
-export async function fetchClassStudents(classId: string, signal?: AbortSignal): Promise<ClassStudent[]> {
-  const { data: { session }, error } = await getSupabase().auth.getSession()
-  if (error) throw error
-  if (!session) throw new AuthenticationError()
-  signal?.throwIfAborted()
+export function fetchClassStudents(classId: string, signal?: AbortSignal): Promise<ClassStudent[]> {
+  return cachedRequest(`roster:${classId}`, (accessToken, internalSignal) => loadClassStudents(classId, accessToken, internalSignal), signal)
+}
 
-  const today = new Date()
-  const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+async function loadClassStudents(classId: string, accessToken: string, signal: AbortSignal): Promise<ClassStudent[]> {
+  // Attendance already contains the complete roster. Reuse its in-flight or
+  // completed load when both tabs preload the same class, avoiding another API call.
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const attendance = sessionCache.get<AttendanceData>(`attendance:${classId}:${today}`)
+  if (attendance) {
+    try {
+      const data = await attendance
+      signal.throwIfAborted()
+      return data.students.map(({ student_id, student_number, full_name }) => ({ student_id, student_number, full_name }))
+    } catch {
+      signal.throwIfAborted()
+      // An attendance failure should not prevent loading the independent roster.
+    }
+  }
   let response: Response
   try {
     const endpoint = serviceUrl(import.meta.env.VITE_ATTENDANCE_URL, '/api/attendance')
     const url = new URL(endpoint, windowOrigin())
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/roster`
     url.searchParams.set('class_id', classId)
-    url.searchParams.set('date', date)
+    url.searchParams.delete('date')
     response = await fetch(endpoint.startsWith('/') ? `${url.pathname}${url.search}` : url.toString(), {
-      headers: { Authorization: `Bearer ${session.access_token}` },
+      headers: { Authorization: `Bearer ${accessToken}` },
       cache: 'no-store',
       signal,
     })
   } catch (error) {
     if (signal?.aborted) throw error
-    throw new Error('Could not load students. Check that the Learnly backend is running.')
+    throw new Error('Could not load students. Check that the Tevra backend is running.')
   }
 
   if (response.status === 401) throw new AuthenticationError()
@@ -227,12 +265,11 @@ function isAttendanceData(value: unknown): value is AttendanceData {
       && (student.notes === null || typeof student.notes === 'string'))
 }
 
-export async function fetchAttendance(classId: string, date: string, signal?: AbortSignal): Promise<AttendanceData> {
-  const { data: { session }, error } = await getSupabase().auth.getSession()
-  if (error) throw error
-  if (!session) throw new AuthenticationError()
-  signal?.throwIfAborted()
+export function fetchAttendance(classId: string, date: string, signal?: AbortSignal): Promise<AttendanceData> {
+  return cachedRequest(`attendance:${classId}:${date}`, (accessToken, internalSignal) => loadAttendance(classId, date, accessToken, internalSignal), signal)
+}
 
+async function loadAttendance(classId: string, date: string, accessToken: string, signal: AbortSignal): Promise<AttendanceData> {
   const endpoint = import.meta.env.PROD
     ? '/api/attendance'
     : import.meta.env.VITE_ATTENDANCE_URL?.trim() || 'http://localhost:5000/api/attendance'
@@ -242,7 +279,7 @@ export async function fetchAttendance(classId: string, date: string, signal?: Ab
   let response: Response
   try {
     response = await fetch(url, {
-      headers: { Authorization: `Bearer ${session.access_token}` },
+      headers: { Authorization: `Bearer ${accessToken}` },
       cache: 'no-store',
       signal,
     })
@@ -259,18 +296,17 @@ export async function fetchAttendance(classId: string, date: string, signal?: Ab
   return data
 }
 
-export async function fetchStudentReport(classId: string, studentId: string, signal?: AbortSignal): Promise<StudentReport> {
-  const { data: { session }, error } = await getSupabase().auth.getSession()
-  if (error) throw error
-  if (!session) throw new AuthenticationError()
-  signal?.throwIfAborted()
+export function fetchStudentReport(classId: string, studentId: string, signal?: AbortSignal): Promise<StudentReport> {
+  return cachedRequest(`report:${classId}:${studentId}`, (accessToken, internalSignal) => loadStudentReport(classId, studentId, accessToken, internalSignal), signal)
+}
 
+async function loadStudentReport(classId: string, studentId: string, accessToken: string, signal: AbortSignal): Promise<StudentReport> {
   let response: Response
   try {
     response = await fetch(serviceUrl(import.meta.env.VITE_REPORT_URL, '/api/reports'), {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ class_id: classId, student_id: studentId }),
@@ -279,7 +315,7 @@ export async function fetchStudentReport(classId: string, studentId: string, sig
     })
   } catch (error) {
     if (signal?.aborted) throw error
-    throw new Error('Could not reach the report service. Check that the Learnly backend is running.')
+    throw new Error('Could not reach the report service. Check that the Tevra backend is running.')
   }
 
   if (response.status === 401) throw new AuthenticationError()
@@ -298,11 +334,20 @@ export async function fetchStudentReport(classId: string, studentId: string, sig
 }
 
 export async function downloadStudentGradeReport(classId: string, studentId: string, signal?: AbortSignal): Promise<void> {
-  const { data: { session }, error } = await getSupabase().auth.getSession()
-  if (error) throw error
-  if (!session) throw new AuthenticationError()
+  const { blob, filename } = await cachedRequest(`download:${classId}:${studentId}`,
+    (accessToken, internalSignal) => loadReportDownload(classId, studentId, accessToken, internalSignal), signal)
   signal?.throwIfAborted()
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename
+  document.body.append(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+}
 
+async function loadReportDownload(classId: string, studentId: string, accessToken: string, signal: AbortSignal) {
   const endpoint = serviceUrl(import.meta.env.VITE_REPORT_URL, '/api/reports')
   const url = new URL(endpoint, windowOrigin())
   url.pathname = `${url.pathname.replace(/\/+$/, '')}/download`
@@ -311,7 +356,7 @@ export async function downloadStudentGradeReport(classId: string, studentId: str
     response = await fetch(endpoint.startsWith('/') ? `${url.pathname}${url.search}` : url.toString(), {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ class_id: classId, student_id: studentId }),
@@ -320,7 +365,7 @@ export async function downloadStudentGradeReport(classId: string, studentId: str
     })
   } catch (error) {
     if (signal?.aborted) throw error
-    throw new Error('Could not reach the report service. Check that the Learnly backend is running.')
+    throw new Error('Could not reach the report service. Check that the Tevra backend is running.')
   }
 
   if (response.status === 401) throw new AuthenticationError()
@@ -345,14 +390,7 @@ export async function downloadStudentGradeReport(classId: string, studentId: str
   if (encodedFilename) {
     try { filename = decodeURIComponent(encodedFilename) } catch { /* Keep the plain filename. */ }
   }
-  const objectUrl = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = objectUrl
-  link.download = filename
-  document.body.append(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  return { blob, filename }
 }
 
 function serviceUrl(configured: string | undefined, path: string): string {
