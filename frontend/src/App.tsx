@@ -18,8 +18,8 @@ type IconProps = {
 
 function Icon({ name, size = 18, strokeWidth = 1.8 }: IconProps) {
   const common: SVGProps<SVGSVGElement> = {
-    width: size,
-    height: size,
+    width: `${size / 16}rem`,
+    height: `${size / 16}rem`,
     viewBox: '0 0 24 24',
     fill: 'none',
     stroke: 'currentColor',
@@ -280,6 +280,12 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled }: {
         <label className="sr-only" htmlFor="assistant-prompt">Message the AI assistant</label>
         <textarea id="assistant-prompt" rows={3} maxLength={5000} value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
+              event.preventDefault()
+              if (!event.repeat) event.currentTarget.form?.requestSubmit()
+            }
+          }}
           placeholder="Write a message…" disabled={loading} />
         <div className="composer-footer">
           <span>AI responses can be inaccurate. Review materials before using them.</span>
