@@ -73,10 +73,10 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
     <main className="app-frame">
       <section className="dashboard-shell auth-shell">
         <div className="auth-card">
-          <div className="brand-mark"><span className="brand-symbol">L</span><span className="brand-name">learnly</span></div>
+          <div className="brand-mark"><span className="brand-symbol">T</span><span className="brand-name">tevra</span></div>
           {supabaseConfigurationError ? (
             <>
-              <h1>Finish setting up Learnly</h1>
+              <h1>Finish setting up Tevra</h1>
               <p role="alert">{supabaseConfigurationError}</p>
             </>
           ) : initializing ? (
@@ -104,7 +104,7 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
                 </button>
               </form>
               <p className="auth-switch">
-                {mode === 'signin' ? 'New to Learnly?' : 'Already have an account?'}{' '}
+                {mode === 'signin' ? 'New to Tevra?' : 'Already have an account?'}{' '}
                 <button className="text-button" type="button" disabled={submitting} onClick={() => {
                   setMode(mode === 'signin' ? 'signup' : 'signin')
                   setError('')

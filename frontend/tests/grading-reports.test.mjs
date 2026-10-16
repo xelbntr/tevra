@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { createServer } from 'vite'
 import { JSDOM } from 'jsdom'
 
-const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'https://learnly.test/grading-reports' })
+const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'https://tevra.test/grading-reports' })
 const globals = new Map()
 let server, React, createRoot, GradingReports, root
 const students = [{ student_id: 'student-1', full_name: 'Ada', student_number: 'S001' }, { student_id: 'student-2', full_name: 'Grace', student_number: 'S002' }]

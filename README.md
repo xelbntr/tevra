@@ -1,6 +1,6 @@
-﻿# Learnly
+﻿# Tevra
 
-Learnly is an academic management web application with a Vite and React frontend and a separate Express backend running on Node.js. Both packages use TypeScript with strict type checking.
+Tevra is an academic management web application with a Vite and React frontend and a separate Express backend running on Node.js. Both packages use TypeScript with strict type checking.
 
 ## Project structure
 

@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom'
 
 const servers = []
 const caches = []
-const dom = new JSDOM('', { url: 'https://learnly.test/grading-reports' })
+const dom = new JSDOM('', { url: 'https://tevra.test/grading-reports' })
 const wordType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 const roster = { students: [{ student_id: 'student-1', student_number: 'S001', full_name: 'Ada' }] }
 let api, auth, configured, configuredAuth, production, productionAuth
@@ -54,7 +54,7 @@ test('lightweight roster URLs retain configured query parameters and remove atte
     await client.fetchClassStudents('class & 1')
     const [target, options] = request.mock.calls[0].arguments
     assert.ok(target.startsWith(`${expected}?`))
-    const url = new URL(target, 'https://learnly.test')
+    const url = new URL(target, 'https://tevra.test')
     assert.equal(url.searchParams.get('class_id'), 'class & 1')
     assert.equal(url.searchParams.getAll('class_id').length, 1)
     assert.equal(url.searchParams.has('date'), false)

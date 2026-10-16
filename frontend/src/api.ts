@@ -90,7 +90,7 @@ export async function sendAssistantMessage(text: string, signal?: AbortSignal): 
     )
   } catch (error) {
     if (signal?.aborted) throw error
-    throw new Error('Could not reach the AI service. Make sure the Learnly backend is running.')
+    throw new Error('Could not reach the AI service. Make sure the Tevra backend is running.')
   }
 
   const data: unknown = await response.json().catch(() => null)
@@ -216,7 +216,7 @@ async function loadClassStudents(classId: string, accessToken: string, signal: A
     })
   } catch (error) {
     if (signal?.aborted) throw error
-    throw new Error('Could not load students. Check that the Learnly backend is running.')
+    throw new Error('Could not load students. Check that the Tevra backend is running.')
   }
 
   if (response.status === 401) throw new AuthenticationError()
@@ -310,7 +310,7 @@ async function loadStudentReport(classId: string, studentId: string, accessToken
     })
   } catch (error) {
     if (signal?.aborted) throw error
-    throw new Error('Could not reach the report service. Check that the Learnly backend is running.')
+    throw new Error('Could not reach the report service. Check that the Tevra backend is running.')
   }
 
   if (response.status === 401) throw new AuthenticationError()
@@ -360,7 +360,7 @@ async function loadReportDownload(classId: string, studentId: string, accessToke
     })
   } catch (error) {
     if (signal?.aborted) throw error
-    throw new Error('Could not reach the report service. Check that the Learnly backend is running.')
+    throw new Error('Could not reach the report service. Check that the Tevra backend is running.')
   }
 
   if (response.status === 401) throw new AuthenticationError()

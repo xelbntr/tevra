@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { createServer } from 'vite'
 import { JSDOM } from 'jsdom'
 
-const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'https://learnly.test/dashboard' })
+const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'https://tevra.test/dashboard' })
 const globals = new Map()
 const originalFetch = globalThis.fetch
 const classes = ['class-1', 'class-2'].map(id => ({ id, name: id, course_code: id, academic_year: '2026', semester: '1' }))
@@ -17,7 +17,7 @@ const report = { grade: 85, attendance: 100, report: {
   attendance_totals: { total: 1, present: 1, late: 0, absent: 0, excused: 0 },
 } }
 let server, React, createRoot, App, api, cache, root, session, authListener, requests
-const sessionFor = id => ({ user: { id, email: `${id}@learnly.test` }, access_token: `token-${id}` })
+const sessionFor = id => ({ user: { id, email: `${id}@tevra.test` }, access_token: `token-${id}` })
 
 before(async () => {
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, navigator: dom.window.navigator, IS_REACT_ACT_ENVIRONMENT: true })) {

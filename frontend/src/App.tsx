@@ -118,11 +118,11 @@ function Dashboard({ email }: { email: string | undefined }) {
 
   return (
     <main className="app-frame">
-      <section className="dashboard-shell" aria-label="Learnly dashboard">
+      <section className="dashboard-shell" aria-label="Tevra dashboard">
         <header className="topbar">
-          <a className="brand-mark" href="/dashboard" aria-label="Learnly home" onClick={(event) => navigate(event, '/dashboard')}>
-            <span className="brand-symbol">L</span>
-            <span className="brand-name">learnly</span>
+          <a className="brand-mark" href="/dashboard" aria-label="Tevra home" onClick={(event) => navigate(event, '/dashboard')}>
+            <span className="brand-symbol">T</span>
+            <span className="brand-name">tevra</span>
           </a>
           <div className="account-controls">
             <span className="account-email" title={email}>{email}</span>
@@ -152,7 +152,7 @@ function Dashboard({ email }: { email: string | undefined }) {
           <div className="dashboard-content">
             <div className="heading-row">
               <div>
-                <p className="eyebrow">{isDashboard ? 'YOUR CLASSROOM AT A GLANCE' : 'LEARNLY CLASSROOM'}</p>
+                <p className="eyebrow">{isDashboard ? 'YOUR CLASSROOM AT A GLANCE' : 'TEVRA CLASSROOM'}</p>
                 <h1>{currentPage?.label ?? (isDashboard ? 'Dashboard' : 'Page not found')}</h1>
               </div>
               {isDashboard && <span className="today-pill">Overview</span>}
@@ -200,7 +200,7 @@ function Dashboard({ email }: { email: string | undefined }) {
               <section className="coming-soon" aria-live="polite">
                 <div className="coming-soon-icon"><Icon name={currentPage?.icon ?? 'book'} size={25} /></div>
                 <h2>{currentPage ? `${currentPage.label} is coming soon` : 'This page is coming soon'}</h2>
-                <p>We’re getting this part of Learnly ready. Check back soon.</p>
+                <p>We’re getting this part of Tevra ready. Check back soon.</p>
                 <a href="/dashboard" onClick={(event) => navigate(event, '/dashboard')}>Back to dashboard</a>
               </section>
             ) : null}
@@ -270,11 +270,11 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled }: {
         )}
         {messages.map((message, index) => (
           <article className={`chat-message chat-message-${message.role}`} key={`${index}-${message.role}`}>
-            <span className="chat-speaker">{message.role === 'user' ? 'You' : 'Learnly AI'}</span>
+            <span className="chat-speaker">{message.role === 'user' ? 'You' : 'Tevra AI'}</span>
             <p>{message.content}</p>
           </article>
         ))}
-        {loading && <p className="chat-pending" role="status">Learnly AI is thinking…</p>}
+        {loading && <p className="chat-pending" role="status">Tevra AI is thinking…</p>}
       </div>
       {error && <p className="error-message chat-error" role="alert">{error}</p>}
       <form className="assistant-composer" onSubmit={submit}>
