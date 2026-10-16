@@ -133,6 +133,51 @@ test('StrictMode shares initial requests and cached tab switches require no netw
   assert.equal(requests.length, 2)
 })
 
+test('report quick action opens the report workflow and quick grading is visibly unavailable', async () => {
+  await mount()
+  const [reportButton, gradingButton] = document.querySelectorAll('.quick-actions button')
+  assert.equal(gradingButton.disabled, true)
+  assert.match(gradingButton.textContent, /Coming soon/)
+  await React.act(async () => reportButton.click())
+  assert.equal(window.location.pathname, '/grading-reports')
+  assert.equal(document.querySelector('.grading-page').parentElement.hidden, false)
+})
+
+test('assistant previews persist across navigation and saves refresh mounted data views', async () => {
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async (target, options) => {
+    const url = new URL(target, window.location.origin)
+    if (url.pathname === '/submit') {
+      requests.push({ url, options })
+      return Response.json({ result: { choices: [{ message: { content: 'Review the change.' } }] },
+        proposals: [{ token: 'signed-preview', label: 'Ada · Math · Quiz 1', before: 80, after: 85 }] })
+    }
+    if (url.pathname === '/api/assistant/confirm') {
+      requests.push({ url, options })
+      return Response.json({ message: 'Saved: Ada · Math · Quiz 1 — 80 → 85' })
+    }
+    return previousFetch(target, options)
+  }
+  await mount()
+  await navigate('AI Assistant')
+  const textarea = document.querySelector('#assistant-prompt')
+  await React.act(async () => {
+    Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value').set.call(textarea, 'Set Ada score to 85')
+    textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    textarea.form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }))
+  })
+  await settleUntil(() => document.querySelector('.assistant-change'))
+  assert.equal(requests.some(request => request.url.pathname.endsWith('/confirm')), false)
+  await navigate('Dashboard')
+  await navigate('AI Assistant')
+  assert.match(document.querySelector('.assistant-change').textContent, /80.*85/)
+  await React.act(async () => document.querySelector('.assistant-change .primary-button').click())
+  await settleUntil(() => requests.filter(request => request.url.pathname === '/api/dashboard').length === 2)
+  assert.equal(document.querySelector('.assistant-change'), null)
+  assert.match(document.querySelector('.chat-transcript').textContent, /Saved: Ada/)
+  assert.equal(requests.filter(request => request.url.pathname.endsWith('/confirm')).length, 1)
+})
+
 test('attendance class and grading selections and previews survive leaving the tab', async () => {
   await mount()
   await navigate('Attendance')
@@ -200,7 +245,8 @@ test('token refresh retains data, while signing out and changing accounts clear 
   await navigate('Attendance')
   await api.fetchDashboard()
   assert.equal(requests.length, count)
-  await React.act(async () => document.querySelector('.account-controls button').click())
+  await React.act(async () => document.querySelector('.profile-button').click())
+  await React.act(async () => document.querySelector('.sign-out-button').click())
   assert.equal(document.querySelector('.attendance-results'), null)
   session = sessionFor('teacher-2')
   await React.act(async () => authListener('SIGNED_IN', session))

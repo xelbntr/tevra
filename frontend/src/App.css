@@ -5,6 +5,9 @@
 
 .dashboard-shell {
   --section-gap: 0.75rem;
+  --dashboard-card-background: rgba(255, 255, 255, 0.5);
+  --dashboard-card-radius: 20px;
+  --dashboard-card-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
   position: relative;
   min-height: 100vh;
   overflow: hidden;
@@ -13,12 +16,6 @@
     radial-gradient(ellipse at 23% 24%, rgba(213, 216, 221, 0.92), transparent 57%),
     linear-gradient(118deg, #d9dadd 0%, #ece5d8 50%, #f6e5c3 100%);
   color: #332719;
-}
-
-.dashboard-home {
-  --dashboard-card-background: rgba(255, 255, 255, 0.5);
-  --dashboard-card-radius: 20px;
-  --dashboard-card-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
 .topbar {
@@ -67,12 +64,24 @@
 }
 
 .profile-button {
-  width: 2.4375rem;
-  height: 2.4375rem;
+  position: relative;
+  width: 68px;
+  height: 68px;
+  padding: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.6);
-  color: #4b3a26;
-  box-shadow: 0 0.125rem 0.5rem rgba(64, 47, 25, 0.1);
+  background: transparent;
+}
+
+.profile-image {
+  position: absolute;
+  top: -17.6471%;
+  left: -23.5294%;
+  /* The Figma asset includes the circle's shadow outside its 68px bounds. */
+  pointer-events: none;
+}
+
+.profile-button:active {
+  transform: translateY(1px) scale(0.95);
 }
 
 .dashboard-layout {
@@ -102,8 +111,7 @@
   text-decoration: none;
 }
 
-.nav-button:hover,
-.profile-button:hover {
+.nav-button:hover {
   transform: translateY(-0.125rem);
   box-shadow: 0 0.3125rem 0.75rem rgba(62, 46, 25, 0.16);
 }
@@ -469,9 +477,49 @@ h1 {
 .text-button:disabled { cursor: wait; }
 button:disabled { cursor: wait; opacity: 0.65; }
 .error-message { color: #8b2424; }
-.account-controls { display: flex; align-items: center; gap: 0.75rem; min-width: 0; margin-left: 0.75rem; }
-.account-email { max-width: min(32vw, 15rem); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; }
-.account-controls button { flex-shrink: 0; }
+.account-controls { position: relative; z-index: 5; flex-shrink: 0; margin-left: 0.75rem; }
+.profile-button:hover { background: rgba(255, 255, 255, 0.25); }
+.account-popup {
+  position: absolute;
+  top: calc(100% + 16px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
+  width: 320px;
+  max-width: calc(100vw - 40px);
+  padding: 24px;
+  border-radius: var(--dashboard-card-radius);
+  background: var(--dashboard-card-background);
+  box-shadow: var(--dashboard-card-shadow);
+  backdrop-filter: blur(16px);
+  color: #382717;
+}
+.account-details { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; }
+.account-label { margin: 0; font-size: 16px; font-weight: 700; line-height: 19px; }
+.account-email { margin: 0; font-size: 24px; font-weight: 500; line-height: 29px; overflow-wrap: anywhere; }
+.sign-out-button {
+  min-width: 75px;
+  min-height: 36px;
+  padding: 8px 9px;
+  border: 1px solid #c65a52;
+  border-radius: 10px;
+  background: transparent;
+  color: #c65a52;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  transition: background 150ms ease, color 150ms ease, transform 80ms ease, box-shadow 80ms ease;
+}
+.sign-out-button:hover,
+.sign-out-button:focus-visible,
+.sign-out-button:disabled { background: #c65a52; color: #fff; }
+.sign-out-button:active,
+.sign-out-button:disabled { transform: translateY(2px) scale(0.96); box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2); }
+.sign-out-button:disabled { cursor: wait; opacity: 1; }
 .dashboard-message, .class-list {
   margin: var(--section-gap) 0;
   padding: 1rem;
@@ -534,7 +582,10 @@ button:disabled { cursor: wait; opacity: 0.65; }
 }
 
 @media (max-width: 620px) {
-  .topbar { height: 3.625rem; padding: 0 1.125rem; }
+  .topbar { height: 80px; padding: 0 1.125rem; }
+  .profile-button { width: 52px; height: 52px; }
+  .profile-image { transform: scale(0.76470588); transform-origin: top left; }
+  .account-email { font-size: 20px; line-height: 25px; }
   .dashboard-layout {
     grid-template-columns: 1fr;
     width: auto;
@@ -650,3 +701,8 @@ button:disabled { cursor: wait; opacity: 0.65; }
   .attendance-overview-heading { align-items: flex-start; }
   .attendance-rate small { max-width: 8.125rem; }
 }
+.action-card:disabled { cursor: default; opacity: .55; }
+.action-label small { display: block; font-size: .65rem; font-weight: 400; }
+.assistant-changes { margin: .75rem 0; font-size: .8rem; }
+.assistant-change { padding: 1rem; margin: .5rem 0; border: 1px solid #d6bf91; border-radius: .7rem; background: #fff9ec; overflow-wrap: anywhere; }
+.assistant-change button { margin-right: .5rem; }

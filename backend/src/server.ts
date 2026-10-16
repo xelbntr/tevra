@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors';
-import { askAI } from './coach.js';
+import { assistantRouter } from './assistant-router.js'
 import { AuthenticationError } from './auth.js'
 import { requestDashboardData } from './dashboard.js'
 import { attendanceRouter } from './attendance.js'
@@ -12,6 +12,14 @@ const app = express()
 // Allows handlers to read JSON sent by the frontend.
 app.use(express.json())
 app.use(cors())
+app.use(assistantRouter)
+app.use(['/submit', '/api/assistant/confirm'], (error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (error instanceof SyntaxError && 'type' in error && error.type === 'entity.parse.failed') {
+    res.set('Cache-Control', 'no-store').status(400).json({ error: 'Provide valid JSON' })
+    return
+  }
+  next(error)
+})
 app.use('/api/attendance', attendanceRouter)
 app.use('/api/reports', reportsRouter)
 app.use('/api/reports', (error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -28,20 +36,6 @@ app.get('/api/v1/health', (_req, res) => {
 })
 
 const port = process.env.PORT || 5000
-
-app.post("/submit", async (req, res, next) => {
-  console.log("AI Chat data requested")
-  try {
-    const text = req.body.text
-
-    console.log("AI Chat prompt received: ", text);
-    const result = await askAI(text)
-
-    res.json({ result })
-  } catch (error) {
-    next(error)
-  }
-})
 
 app.get('/api/dashboard', async (req, res) => {
   res.set('Cache-Control', 'no-store')

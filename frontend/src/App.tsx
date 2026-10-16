@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, MouseEvent, SVGProps } from 'react'
 import { AuthGate } from './AuthGate'
+import { AccountMenu } from './AccountMenu'
 import { AttendancePage } from './AttendancePage'
 import { GradingReports } from './GradingReports'
-import { AuthenticationError, fetchDashboard, sendAssistantMessage } from './api'
-import type { AssistantMessage, DashboardData } from './api'
+import { AuthenticationError, fetchDashboard, sendAssistantChat, confirmAssistantEdit } from './api'
+import type { AssistantMessage, AssistantProposal, DashboardData } from './api'
 import { getSupabase } from './supabase'
 import './App.css'
 
@@ -66,6 +67,7 @@ function Dashboard({ email }: { email: string | undefined }) {
   const [assistantPrompt, setAssistantPrompt] = useState('')
   const [notice, setNotice] = useState('')
   const [signingOut, setSigningOut] = useState(false)
+  const [dataRevision, setDataRevision] = useState(0)
 
   useEffect(() => {
     function syncPathname() {
@@ -124,12 +126,7 @@ function Dashboard({ email }: { email: string | undefined }) {
             <span className="brand-symbol">T</span>
             <span className="brand-name">tevra</span>
           </a>
-          <div className="account-controls">
-            <span className="account-email" title={email}>{email}</span>
-            <button className="secondary-button" type="button" disabled={signingOut} onClick={signOut}>
-              {signingOut ? 'Signing out…' : 'Sign out'}
-            </button>
-          </div>
+          <AccountMenu email={email} signingOut={signingOut} onSignOut={signOut} />
         </header>
 
         <div className="dashboard-layout">
@@ -173,30 +170,35 @@ function Dashboard({ email }: { email: string | undefined }) {
                   <button type="submit" aria-label="Send question"><Icon name="send" size={16} /></button>
                 </form>
 
-                <DashboardResults />
+                <DashboardResults key={dataRevision} />
 
                 <section className="quick-actions" aria-label="Quick actions">
-                  <button className="action-card" type="button" onClick={() => showNotice('Report generation is coming soon.')}>
+                  <button className="action-card" type="button" onClick={() => {
+                    window.history.pushState({}, '', '/grading-reports')
+                    setPathname('/grading-reports')
+                  }}>
                     <span className="action-icon"><img src="/dashboard/report.svg" alt="" /></span>
                     <span className="action-label">Generate Report</span>
                     <span className="action-arrow"><img src="/dashboard/arrow.svg" alt="" /></span>
                   </button>
-                  <button className="action-card" type="button" onClick={() => showNotice('Quick grading is coming soon.')}>
+                  <button className="action-card" type="button" disabled title="Quick grading is coming soon">
                     <span className="action-icon"><img src="/dashboard/grading.svg" alt="" /></span>
-                    <span className="action-label">Quick Grading</span>
+                    <span className="action-label">Quick Grading <small>Coming soon</small></span>
                     <span className="action-arrow"><img src="/dashboard/arrow.svg" alt="" /></span>
                   </button>
                 </section>
               </>
             </div>
-            <div hidden={!isAttendance}><AttendancePage /></div>
-            <div hidden={!isGradingReports}><GradingReports /></div>
-            {isAssistant ? (
+            <div hidden={!isAttendance}><AttendancePage key={dataRevision} /></div>
+            <div hidden={!isGradingReports}><GradingReports key={dataRevision} /></div>
+            <div hidden={!isAssistant}>
               <AssistantChat
                 initialPrompt={assistantPrompt}
                 onInitialPromptHandled={() => setAssistantPrompt('')}
+                onRecordsChanged={() => setDataRevision(value => value + 1)}
               />
-            ) : !isDashboard && !isAttendance && !isGradingReports ? (
+            </div>
+            {!isAssistant && !isDashboard && !isAttendance && !isGradingReports ? (
               <section className="coming-soon" aria-live="polite">
                 <div className="coming-soon-icon"><Icon name={currentPage?.icon ?? 'book'} size={25} /></div>
                 <h2>{currentPage ? `${currentPage.label} is coming soon` : 'This page is coming soon'}</h2>
@@ -212,40 +214,64 @@ function Dashboard({ email }: { email: string | undefined }) {
   )
 }
 
-function AssistantChat({ initialPrompt, onInitialPromptHandled }: {
+function AssistantChat({ initialPrompt, onInitialPromptHandled, onRecordsChanged }: {
   initialPrompt: string
   onInitialPromptHandled: () => void
+  onRecordsChanged: () => void
 }) {
   const [messages, setMessages] = useState<AssistantMessage[]>([])
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const initialPromptHandled = useRef(false)
+  const [proposals, setProposals] = useState<AssistantProposal[]>([])
+  const [saving, setSaving] = useState(false)
+  const busy = useRef(false)
 
-  async function sendMessage(rawMessage: string) {
+  const sendMessage = useCallback(async (rawMessage: string) => {
     const content = rawMessage.trim()
-    if (!content || loading) return
+    if (!content || busy.current) return
+    busy.current = true
+    setProposals([])
     const conversation: AssistantMessage[] = [...messages, { role: 'user' as const, content }].slice(-20)
     setMessages(conversation)
     setDraft('')
     setError('')
     setLoading(true)
     try {
-      const reply = await sendAssistantMessage(content)
+      const { reply, proposals: changes } = await sendAssistantChat(content, messages)
       setMessages([...conversation, { role: 'assistant' as const, content: reply }].slice(-20))
+      setProposals(changes)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'The AI could not respond. Please try again.')
     } finally {
       setLoading(false)
+      busy.current = false
     }
-  }
+  }, [messages])
 
   useEffect(() => {
-    if (!initialPrompt || initialPromptHandled.current) return
-    initialPromptHandled.current = true
+    if (!initialPrompt || busy.current) return
     void sendMessage(initialPrompt)
     onInitialPromptHandled()
-  }, [initialPrompt])
+  }, [initialPrompt, loading, saving, sendMessage, onInitialPromptHandled])
+
+  async function confirmChange(proposal: AssistantProposal) {
+    if (busy.current) return
+    busy.current = true
+    setSaving(true)
+    setError('')
+    try {
+      const message = await confirmAssistantEdit(proposal.token)
+      setMessages(current => [...current, { role: 'assistant' as const, content: message }].slice(-20))
+      setProposals(current => current.filter(item => item.token !== proposal.token))
+      onRecordsChanged()
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not save the change.')
+    } finally {
+      busy.current = false
+      setSaving(false)
+    }
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -258,14 +284,14 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled }: {
         <span className="assistant-icon"><Icon name="sparkles" size={20} /></span>
         <div>
           <h2>Teaching assistant</h2>
-          <p>Ask for lesson ideas, classroom strategies, or help shaping teaching materials.</p>
+          <p>Explore your classes, grades and attendance, or ask to update a score or attendance status.</p>
         </div>
       </div>
       <div className="chat-transcript" aria-live="polite" aria-busy={loading}>
         {messages.length === 0 && (
           <div className="chat-empty">
             <strong>What would you like help with?</strong>
-            <span>Try asking for a lesson plan, an activity, or an explanation of a topic.</span>
+            <span>Try “Which students need support?” or “Change Ada’s Quiz 1 score to 85 in Math.”</span>
           </div>
         )}
         {messages.map((message, index) => (
@@ -276,6 +302,15 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled }: {
         ))}
         {loading && <p className="chat-pending" role="status">Tevra AI is thinking…</p>}
       </div>
+      {proposals.length > 0 && <section className="assistant-changes" aria-label="Proposed changes">
+        <p>Review before saving. Each preview expires after 15 minutes.</p>
+        {proposals.map(proposal => <article className="assistant-change" key={proposal.token}>
+          <strong>{proposal.label}</strong>
+          <p>{proposal.before ?? 'Unmarked'} → {proposal.after}</p>
+          <button className="primary-button" type="button" disabled={saving || loading} onClick={() => void confirmChange(proposal)}>{saving ? 'Saving…' : 'Confirm change'}</button>
+          <button className="secondary-button" type="button" disabled={saving || loading} onClick={() => setProposals(current => current.filter(item => item.token !== proposal.token))}>Cancel</button>
+        </article>)}
+      </section>}
       {error && <p className="error-message chat-error" role="alert">{error}</p>}
       <form className="assistant-composer" onSubmit={submit}>
         <label className="sr-only" htmlFor="assistant-prompt">Message the AI assistant</label>
@@ -287,10 +322,10 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled }: {
               if (!event.repeat) event.currentTarget.form?.requestSubmit()
             }
           }}
-          placeholder="Write a message…" disabled={loading} />
+          placeholder="Write a message…" disabled={loading || saving} />
         <div className="composer-footer">
           <span>AI responses can be inaccurate. Review materials before using them.</span>
-          <button className="primary-button" type="submit" disabled={loading || !draft.trim()}>
+          <button className="primary-button" type="submit" disabled={loading || saving || !draft.trim()}>
             {loading ? 'Thinking…' : 'Send'}
           </button>
         </div>
