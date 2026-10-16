@@ -10,6 +10,11 @@ import { createServer } from 'vite'
 test('frontend uses the running backend submit contract', { timeout: 15_000 }, async (t) => {
   let upstreamRequest
   const upstream = createHttpServer(async (request, response) => {
+    if (request.url === '/auth/v1/user') {
+      response.writeHead(200, { 'Content-Type': 'application/json' })
+      response.end(JSON.stringify({ id: '00000000-0000-4000-8000-000000000001' }))
+      return
+    }
     let body = ''
     for await (const chunk of request) body += chunk
     upstreamRequest = { method: request.method, url: request.url, body: JSON.parse(body) }
@@ -39,7 +44,7 @@ test('frontend uses the running backend submit contract', { timeout: 15_000 }, a
       PORT: String(backendPort),
       AI_API_KEY: 'test-key',
       GROQ_BASE_URL: `http://127.0.0.1:${upstream.address().port}`,
-      SUPABASE_URL: 'https://example.supabase.co',
+      SUPABASE_URL: `http://127.0.0.1:${upstream.address().port}`,
       SUPABASE_ANON_KEY: 'test-key',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -77,6 +82,8 @@ test('frontend uses the running backend submit contract', { timeout: 15_000 }, a
 
   // Exercise the frontend's default path against this backend's temporary port.
   delete process.env.VITE_AI_CHAT_URL
+  process.env.VITE_SUPABASE_URL = 'https://example.supabase.co'
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'test-key'
   const frontend = await createServer({
     root: fileURLToPath(new URL('../', import.meta.url)),
     configFile: false,
@@ -88,6 +95,13 @@ test('frontend uses the running backend submit contract', { timeout: 15_000 }, a
   })
   t.after(() => frontend.close())
   const api = await frontend.ssrLoadModule('/src/api.ts')
+  const { getSupabase } = await frontend.ssrLoadModule('/src/supabase.ts')
+  const jwt = [
+    { alg: 'HS256', typ: 'JWT' },
+    { sub: '00000000-0000-4000-8000-000000000001', role: 'authenticated', aud: 'authenticated',
+      iss: `http://127.0.0.1:${upstream.address().port}/auth/v1`, exp: Math.floor(Date.now() / 1000) + 3600 },
+  ].map(part => Buffer.from(JSON.stringify(part)).toString('base64url')).join('.') + '.test-signature'
+  t.mock.method(getSupabase().auth, 'getSession', async () => ({ data: { session: { access_token: jwt } }, error: null }))
   const originalFetch = globalThis.fetch
   t.mock.method(globalThis, 'fetch', (url, options) => {
     const target = new URL(url)
@@ -100,6 +114,12 @@ test('frontend uses the running backend submit contract', { timeout: 15_000 }, a
   assert.equal(upstreamRequest.url, '/openai/v1/chat/completions')
   assert.equal(upstreamRequest.body.messages[0].role, 'system')
   assert.deepEqual(upstreamRequest.body.messages[1], { role: 'user', content: 'Suggest a classroom activity.' })
+  assert.ok(upstreamRequest.body.tools.some(tool => tool.function.name === 'propose_edit'))
+  const anonymousChat = await originalFetch(`${backendUrl}/submit`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'List my classes' }),
+  })
+  assert.equal(anonymousChat.status, 401)
+  assert.equal(anonymousChat.headers.get('cache-control'), 'no-store')
 
   const dashboard = await originalFetch(`${backendUrl}/api/dashboard`)
   assert.equal(dashboard.status, 401)

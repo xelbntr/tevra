@@ -232,6 +232,7 @@ test('posts the current prompt to the backend submit route and reads its complet
   assert.equal(url, 'http://localhost:5000/submit')
   assert.equal(options.method, 'POST')
   assert.equal(options.headers['Content-Type'], 'application/json')
+  assert.equal(options.headers.Authorization, 'Bearer token-1')
   assert.deepEqual(JSON.parse(options.body), { text: 'Suggest a lesson idea.' })
   assert.equal(options.signal, controller.signal)
 })
@@ -240,6 +241,42 @@ test('rejects empty AI prompts without sending a request', async () => {
   const request = mock.method(globalThis, 'fetch', async () => { throw new Error('Unexpected request') })
   await assert.rejects(api.sendAssistantMessage('  '), /Enter a message/)
   assert.equal(request.mock.callCount(), 0)
+})
+
+test('assistant errors show the safe server message and its diagnostic reference', async () => {
+  const requestId = '00000000-0000-4000-8000-000000000001'
+  mock.method(globalThis, 'fetch', async () => Response.json({
+    error: 'The server could not connect to the AI service. Please try again shortly.', requestId,
+  }, { status: 503 }))
+  await assert.rejects(api.sendAssistantChat('test'), {
+    message: `The server could not connect to the AI service. Please try again shortly. (Reference: ${requestId})`,
+  })
+})
+
+test('assistant requires a session and sends follow-up context', async () => {
+  const request = mock.method(globalThis, 'fetch', async () => Response.json({ result: { choices: [{ message: { content: 'Ada has 85.' } }] }, proposals: [] }))
+  const history = [{ role: 'user', content: 'Find Ada in Math' }, { role: 'assistant', content: 'Found Ada.' }]
+  assert.equal((await api.sendAssistantChat('What is her grade?', history)).reply, 'Ada has 85.')
+  assert.deepEqual(JSON.parse(request.mock.calls[0].arguments[1].body).history, history)
+  auth.getSession.mock.mockImplementation(async () => ({ data: { session: null }, error: null }))
+  await assert.rejects(api.sendAssistantChat('List classes'), api.AuthenticationError)
+  assert.equal(request.mock.callCount(), 1)
+})
+
+test('confirmation sends the signed preview and clears cached records only after saving', async () => {
+  const request = mock.method(globalThis, 'fetch', async () => Response.json(payload))
+  await api.fetchDashboard()
+  const version = cache.version
+  request.mock.mockImplementation(async () => Response.json({ error: 'Record changed' }, { status: 409 }))
+  await assert.rejects(api.confirmAssistantEdit('signed-preview'), /Record changed/)
+  assert.equal(cache.version, version)
+  request.mock.mockImplementation(async () => Response.json({ message: 'Saved score: 80 → 85' }))
+  assert.match(await api.confirmAssistantEdit('signed-preview'), /Saved score/)
+  assert.ok(cache.version > version)
+  const [url, options] = request.mock.calls.at(-1).arguments
+  assert.equal(new URL(url).pathname, '/api/assistant/confirm')
+  assert.equal(options.headers.Authorization, 'Bearer token-1')
+  assert.deepEqual(JSON.parse(options.body), { token: 'signed-preview' })
 })
 
 test('rejects malformed or empty AI completions, including the obsolete reply format', async () => {

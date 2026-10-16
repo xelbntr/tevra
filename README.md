@@ -1,100 +1,108 @@
-﻿# Tevra
+# Tevra
 
-Tevra is an academic management web application with a Vite and React frontend and a separate Express backend running on Node.js. Both packages use TypeScript with strict type checking.
+**Understand your classroom, support your students, and turn academic records into useful next steps.**
 
-## Project structure
+Tevra is an academic management website for teachers and lecturers who want a clearer view of their classes without repeatedly piecing together attendance, assessment scores, and student histories. It brings classroom summaries, attendance review, student reports, and an AI assistant into one workspace.
 
-- `backend/` — Express API; `src/server.ts` defines routes, `src/auth.ts` verifies sessions, `src/reports/` builds student reports, and `src/coach.ts` connects the AI coach to Groq.
-- `frontend/` — Vite React application; components use `.tsx` and other source files use `.ts`.
-- `frontend/.env.example` — frontend environment variable template. Copy it to `frontend/.env` and fill in local values when needed. Create `backend/.env` for backend settings.
+The goal is to make routine academic work easier while helping educators notice where a student may need attention and decide how to respond.
 
-## Install dependencies
+## Who it is for
 
-Install each package separately from its own folder:
+Tevra is built for educators responsible for monitoring student progress across one or more classes. It supports teachers reviewing daily attendance, lecturers comparing performance across their classes, and educators preparing individual progress reports or planning additional support.
 
-```sh
-cd backend
-npm install
-```
+Its current workspace centers on the signed-in educator and the classes they can access.
 
-```sh
-cd frontend
-npm install
-```
+## The problems Tevra helps solve
 
-Use Node.js 22.12+ or a newer supported release. Install development dependencies in both packages for local development and builds.
+Classroom records are useful only when you can turn them into decisions. Looking through scores and attendance separately can make it difficult to see the full picture, compare classes, or prepare a meaningful student report.
 
-## Development
+Tevra connects these tasks so educators can:
 
-Run `npm run dev` in each package in separate terminals:
+- **Spend less time gathering information.** Review class summaries and ask questions about records from the same workspace.
+- **Notice students who may need support.** Explore performance and attendance together, then investigate the patterns behind them.
+- **Reduce repetitive report preparation.** Generate a student report draft with academic observations, attendance summaries, and suggested next steps.
+- **Correct records with a clear review step.** Ask the assistant to prepare a grade or attendance change and inspect it before saving.
+- **Connect analysis to teaching.** Use the available classroom evidence to explore lesson ideas, activities, learning strategies, and interventions.
 
-- `frontend/`: starts the Vite frontend.
-- `backend/`: starts `src/server.ts` with automatic restarts through `tsx`. The default port is 5000; override it with `PORT` in `backend/.env`.
+## An AI assistant that works with your classroom
 
-The backend health endpoint is `GET http://localhost:5000/api/v1/health`.
-The AI Assistant page sends the current prompt to `POST http://localhost:5000/submit` as `{ "text": "Your question" }` and reads the reply from `result.choices[0].message.content`. The backend handles each prompt independently; previous messages remain visible in the frontend but are not sent as conversation history. `VITE_AI_CHAT_URL` can override the submit URL; update any existing `/api/v1/ai/chat` setting in `frontend/.env` to `/submit` and restart Vite. Put the Groq API key in `backend/.env` as `AI_API_KEY`; keep it out of frontend environment files.
+The AI Assistant is a central part of Tevra. You can ask questions in everyday language, and it can look up your classes, student rosters, assessments, recorded grades, and attendance to ground its answers in the information available to you.
 
-## Type checks and builds
+Ask for a summary of a student's progress, compare students or classes, or explore patterns that may suggest someone needs extra support. From there, continue into practical teaching questions: what activity could help, which learning strategy might fit, or what intervention would be worth trying based on the records.
 
-Run these commands from the relevant package folder:
+The conversation supports follow-up questions. After discussing a student, you can ask “What about her attendance?” without starting over or repeating the student's name. Recent conversation context helps the assistant connect the question to the discussion.
 
-| Command | Frontend | Backend |
-| --- | --- | --- |
-| `npm run typecheck` | Checks React and Vite configuration types | Checks all backend source types |
-| `npm run build` | Checks types and creates `dist/` | Checks types and compiles TypeScript into `dist/` |
-| `npm run lint` | Runs Oxlint | Not configured |
-| `npm test` | Checks dashboard and AI request contracts | Runs Node's test runner with TypeScript support |
+### Move from a question to a reviewed change
 
-For a production backend, run `npm run build` followed by `npm start`. To preview the frontend build locally, run `npm run preview`.
+When a record needs correcting, the assistant can propose an update to an **existing assessment score**, within that assessment's allowed range. It can also record or correct attendance for a specific date using **present, late, excused, or absent**, including a date that has no attendance entry yet.
 
-TypeScript checks code during development and builds; it does not validate external data at runtime. Backend authentication requires `SUPABASE_URL` and `SUPABASE_ANON_KEY`, and AI features require `AI_API_KEY`. These helpers are not called by the health endpoint.
+Every proposed edit appears in a review card identifying the student, class, assessment or attendance date, and the values before and after the change. You decide whether to **confirm or cancel**. A chat reply such as “yes” does not save the edit; saving requires the card's **Confirm change** button.
 
-## Data loading and session cache
+Once a change is saved, Tevra refreshes the affected data so the classroom views reflect the update. Each card is confirmed separately. If the underlying record changes before confirmation, a fresh preview is required.
 
-Dashboard, Attendance, and Grading & Reports share a browser-memory cache for
-the signed-in user. Concurrent loads share one request; successful dashboard,
-class roster, class/date attendance, student report preview, and Word document
-responses remain available until sign-out, an account switch, or a page reload.
-Token refreshes preserve the cache. Failed requests are not cached, and leaving
-one view does not cancel a request used by another view. Signing out clears the
-cache and cancels its pending requests, including responses that arrive late.
+### Questions to try
 
-All three data views mount after sign-in, so the dashboard loads once and the
-initial attendance and grading roster preload in the background. The views
-share an in-flight attendance roster when loading the same class, avoiding a
-separate roster request. Other grading classes use the lightweight roster
-endpoint without attendance joins. Hidden views retain their filters and report
-preview. Switching tabs after loading requires
-no network request. Reload the page to fetch records changed outside this app;
-future editing features must invalidate the affected cache entries after saving.
-Private responses retain HTTP `no-store`; application data is not placed in a
-shared HTTP cache, local storage, or session storage.
+- “Compare attendance across my classes.”
+- “Which students may need support in Math?”
+- “Summarize Ada's progress, then suggest an activity to help her.”
+- “What about her attendance?”
+- “Change Ada's Quiz 1 score in Math to 85.”
+- “Mark Ada present in Math on October 16, 2026.”
 
-The dashboard includes Average Grade and Attendance Rate for the lecturer's
-accessible classes. Average Grade is the unweighted mean of recorded assessment
-percentages; Attendance Rate counts present and late entries as attended out of
-all recorded attendance entries. Both display a dash when no records exist.
-Grade reads paginate so database response limits cannot truncate the average.
+Score changes must fit the selected assessment's maximum score. Names, classes, assessments, and dates need to identify the intended record clearly.
 
-The backend verifies access tokens with Supabase `getClaims`, reusing cached
-public signing keys for asymmetric tokens. Legacy symmetric tokens still use
-Supabase's Auth verification endpoint. Each database client sends the caller's
-token so existing row access policies remain enforced. Attendance and roster
-endpoints run independent class/roster reads concurrently. The first uncached
-load still depends on network latency, and a new report still waits for AI
-generation; cached navigation does not incur those waits.
+### Access and boundaries
 
-Use `.js` extensions for relative imports between backend source modules (for example, `import { askAI } from './coach.js'`). TypeScript resolves these to `.ts` source files and preserves working imports in the compiled Node.js output.
+The assistant only accesses your own classes. Its editing abilities are limited to existing grade scores and attendance statuses: it cannot create or delete students, classes, enrollments, or assessments, and it cannot edit feedback, notes, or other fields.
 
-## Vercel deployment
+Its analysis and teaching suggestions support professional judgment. Review the evidence and recommendations, just as you review a proposed record change. If a request exceeds the supported data limits, the assistant reports the limitation instead of presenting incomplete statistics as a complete answer.
 
-For backend startup errors, missing initialization logs, or `FUNCTION_INVOCATION_FAILED`, see the [2026-10-16 incident and verified fix](docs/troubleshooting/vercel-backend-startup.md).
+## Your classroom workspace
 
-Deploy from the repository root using `vercel.json`. The frontend serves the SPA, while `/api/*` and `/submit` route to the Express backend. Production frontend requests use these same-origin paths.
+### Dashboard
 
-The backend service runs `npm run typecheck`; Vercel bundles `backend/src/server.ts` and its dependencies. Do not change this to `npm run build` or upload local `dist/` folders: Vercel can select the compiled directory instead of bundling the source, losing the ES module package context and dependency paths. `.vercelignore` excludes generated builds, local environment files, and temporary files from CLI uploads.
+Start with an overview of your accessible classes, recorded average grade, and attendance rate. Open the assistant directly from the dashboard to investigate a question, or move into student reports for a closer look.
 
-Configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `AI_API_KEY` in the deployment environment. Despite its legacy name, `SUPABASE_ANON_KEY` can hold the same publishable key used by the frontend; user access tokens still determine access. Store `AI_API_KEY` as a server-only Secret.
+The average grade is the unweighted mean of recorded assessment percentages. Attendance rate counts present and late entries as attended out of all recorded attendance entries. These figures describe the available records; missing data appears as unavailable rather than being treated as zero.
 
-After deploying, verify `/api/v1/health` returns `200` with `status: "ok"`, `/api/dashboard` returns `401` without a session, and `/submit` returns an AI completion. Use `vercel curl` for deployments protected by Vercel Authentication. A deployment marked Ready confirms the build, not runtime health.
+### Attendance
 
+Choose a class and date to review its active student roster, attendance entries, and status recap. Present, late, excused, absent, and unmarked records remain distinguishable, so a student with no entry is not automatically treated as absent.
+
+Use the assistant when you need to record a missing attendance entry or correct an existing status, then confirm the proposed change before it is saved.
+
+### Grading & Reports
+
+Select a class and student to preview an individual report or generate a downloadable **Word document (.docx)** using the JOINTS student assessment template.
+
+Reports bring together an academic summary, attendance summary, strengths, areas for support, recommended next steps, and data limitations. Recorded grade averages and attendance totals accompany the narrative, giving educators a starting point for review and student support conversations.
+
+AI-written observations are drafts for teacher review. Report averages are unweighted summaries of recorded assessments, not final course grades. Missing information is identified explicitly, and dates without attendance records are not assumed to be absences.
+
+## How it works
+
+1. **Sign in.** Tevra uses Supabase Auth to establish your session and load the classes available to your account.
+2. **Review the classroom picture.** Open the dashboard, select a class and attendance date, or choose a student for a report.
+3. **Ask and explore.** The assistant retrieves relevant classroom records to help answer questions and suggest teaching approaches. Recent chat context supports follow-up questions.
+4. **Review before changing a record.** Inspect any proposed score or attendance update and confirm or cancel it using its review card.
+5. **Use the results.** Continue with refreshed classroom data, review a report draft, or download a Word report.
+
+Loaded classroom views retain their selections while you switch between tabs. Data is cached in browser memory during the session, and confirmed assistant edits refresh the affected views. Reload the page to retrieve records changed outside the app. Chat context and pending edit cards persist during tab navigation but clear on reload or sign-out.
+
+## Current scope
+
+Tevra currently provides classroom overviews, attendance review, individual student report previews and Word downloads, and classroom-aware AI conversations with confirmed score and attendance edits.
+
+The dashboard's **Quick Grading** shortcut is marked **Coming soon**. General student, class, enrollment, and assessment creation or deletion is outside the assistant's supported actions.
+
+## Behind the website
+
+Tevra uses a React and Vite frontend with an Express backend, both written in TypeScript. Supabase provides authentication and classroom data access, while Groq powers the AI assistant and report narratives. The backend verifies user sessions and uses the signed-in user's access token for database requests so existing data access policies remain in effect. Relevant queried records are sent to the AI provider to generate answers and report drafts.
+
+For implementation details, see the [frontend guide](frontend/README.md), [attendance API notes](backend/ATTENDANCE.md), [student report documentation](backend/REPORTS.md), and [deployment troubleshooting guide](docs/troubleshooting/vercel-backend-startup.md).
+
+### Troubleshooting assistant requests
+
+Assistant errors display a reference that matches the backend's diagnostic entry. Logs include the failure stage, message, stack frames, underlying cause, and available provider status/code and request ID. AI failures also include the model, lookup round, and input character count. Credentials and provider-generated error payloads are excluded. During local development, entries are also saved in `backend/logs/assistant-errors.log`; production uses the server console.
+
+Class overviews use statistics calculated from complete accessible records on the server, keeping individual student rows out of the AI request. Detailed record lookups can be limited to an exact student name or number. If a raw result is too large, the assistant is directed to use a class summary or an individual lookup instead.

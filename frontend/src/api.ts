@@ -74,9 +74,24 @@ export type AssistantMessage = {
   content: string
 }
 
+export type AssistantProposal = {
+  token: string
+  label: string
+  before: string | number | null
+  after: string | number
+}
+
 export async function sendAssistantMessage(text: string, signal?: AbortSignal): Promise<string> {
+  return (await sendAssistantChat(text, [], signal)).reply
+}
+
+export async function sendAssistantChat(text: string, history: AssistantMessage[] = [], signal?: AbortSignal): Promise<{ reply: string; proposals: AssistantProposal[] }> {
   const prompt = text.trim()
   if (!prompt) throw new Error('Enter a message for the AI assistant.')
+  signal?.throwIfAborted()
+  const { data: { session }, error } = await getSupabase().auth.getSession()
+  if (error) throw error
+  if (!session) throw new AuthenticationError()
   signal?.throwIfAborted()
 
   let response: Response
@@ -85,8 +100,9 @@ export async function sendAssistantMessage(text: string, signal?: AbortSignal): 
       (import.meta.env.PROD ? '/submit' : import.meta.env.VITE_AI_CHAT_URL?.trim() || 'http://localhost:5000/submit'),
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: prompt }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ text: prompt, ...(history.length ? { history: history.slice(-20).map(item => ({ ...item, content: item.content.slice(0, 6000) })) } : {}) }),
+        cache: 'no-store',
         signal,
       },
     )
@@ -96,11 +112,15 @@ export async function sendAssistantMessage(text: string, signal?: AbortSignal): 
   }
 
   const data: unknown = await response.json().catch(() => null)
+  if (response.status === 401) throw new AuthenticationError()
   if (!response.ok) {
     const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
       ? data.error
       : 'The AI could not respond right now. Please try again.'
-    throw new Error(message)
+    const reference = data && typeof data === 'object' && 'requestId' in data
+      && typeof data.requestId === 'string' && /^[\da-f-]{36}$/i.test(data.requestId)
+      ? ` (Reference: ${data.requestId})` : ''
+    throw new Error(message + reference)
   }
   const result = data && typeof data === 'object' && 'result' in data ? data.result : null
   const choices = result && typeof result === 'object' && 'choices' in result ? result.choices : null
@@ -110,7 +130,36 @@ export async function sendAssistantMessage(text: string, signal?: AbortSignal): 
     || typeof message.content !== 'string' || !message.content.trim()) {
     throw new Error('The AI service returned an unexpected response.')
   }
-  return message.content
+  const proposals = data && typeof data === 'object' && 'proposals' in data ? data.proposals : []
+  if (!Array.isArray(proposals) || !proposals.every(p => p && typeof p.token === 'string' && typeof p.label === 'string'
+    && (p.before === null || typeof p.before === 'string' || typeof p.before === 'number')
+    && (typeof p.after === 'string' || typeof p.after === 'number'))) throw new Error('The AI service returned an unexpected response.')
+  return { reply: message.content, proposals }
+}
+
+export async function confirmAssistantEdit(token: string): Promise<string> {
+  const version = sessionCache.version
+  const { data: { session }, error } = await getSupabase().auth.getSession()
+  if (error) throw error
+  if (!session) throw new AuthenticationError()
+  const endpoint = import.meta.env.PROD ? '/api/assistant/confirm'
+    : new URL('/api/assistant/confirm', new URL(import.meta.env.VITE_AI_CHAT_URL?.trim() || 'http://localhost:5000/submit', windowOrigin())).toString()
+  let response: Response
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      cache: 'no-store', body: JSON.stringify({ token }),
+    })
+  } catch {
+    throw new Error('Could not confirm the save. Check the record before retrying.')
+  }
+  const data = await response.json().catch(() => null)
+  if (response.status === 401) throw new AuthenticationError()
+  if (!response.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'Could not save the change.')
+  if (!sessionCache.accepts(version)) throw new DOMException('Session changed', 'AbortError')
+  sessionCache.clear()
+  if (typeof data?.message !== 'string') throw new Error('Unexpected save response. Check the record before retrying.')
+  return data.message
 }
 
 export class AuthenticationError extends Error {
