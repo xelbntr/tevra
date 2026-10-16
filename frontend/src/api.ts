@@ -149,7 +149,7 @@ async function cachedRequest<T>(key: string, loader: (accessToken: string, signa
     throw new AuthenticationError()
   }
   signal?.throwIfAborted()
-  if (!sessionCache.accepts(cacheVersion, session.user.id)) {
+  if (!sessionCache.accepts(cacheVersion)) {
     throw new DOMException('The signed-in session changed', 'AbortError')
   }
   sessionCache.setOwner(session.user.id)

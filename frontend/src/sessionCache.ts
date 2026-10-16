@@ -9,8 +9,8 @@ export class SessionCache {
 
   get version() { return this.revision }
 
-  accepts(version: number, owner: string) {
-    return this.revision === version || this.owner === owner
+  accepts(version: number) {
+    return this.revision === version
   }
 
   get<T>(key: string): Promise<T> | undefined {
