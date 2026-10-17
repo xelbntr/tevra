@@ -5,6 +5,7 @@ import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AuthGate } from './AuthGate'
 import { AccountMenu } from './AccountMenu'
+import { SampleWorkspace } from './SampleWorkspace'
 import { AttendancePage } from './AttendancePage'
 import { ReportsPage } from './ReportsPage'
 import { GradesPage } from './GradesPage'
@@ -62,12 +63,19 @@ const navigation = [
 function App() {
   return (
     <AuthGate>
-      {(session) => <Dashboard key={session.user.id} email={session.user.email} />}
+      {(session) => (
+        <SampleWorkspace key={session.user.id} onSignOut={async () => {
+          const { error } = await getSupabase().auth.signOut({ scope: 'local' })
+          if (error) throw error
+        }}>
+          {(sampleData) => <Dashboard email={session.user.email} sampleData={sampleData} />}
+        </SampleWorkspace>
+      )}
     </AuthGate>
   )
 }
 
-function Dashboard({ email }: { email: string | undefined }) {
+function Dashboard({ email, sampleData }: { email: string | undefined; sampleData: boolean }) {
   const [pathname, setPathname] = useState(window.location.pathname)
   const [prompt, setPrompt] = useState('')
   const [assistantPrompt, setAssistantPrompt] = useState('')
@@ -170,6 +178,7 @@ function Dashboard({ email }: { email: string | undefined }) {
           </nav>
 
           <div className="dashboard-content">
+            {sampleData && <p className="sample-data-notice">Your workspace starts with fictional sample classroom data so you can explore Tevra. Changes you make are saved only to your account.</p>}
             <div className="heading-row">
               <div>
                 <p className="eyebrow">{isDashboard ? 'YOUR CLASSROOM AT A GLANCE' : 'TEVRA CLASSROOM'}</p>

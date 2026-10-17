@@ -6,7 +6,8 @@ import { JSDOM } from 'jsdom'
 
 const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'https://tevra.test/' })
 const globals = new Map()
-let server, React, createRoot, AuthGate, root, calls
+let server, React, createRoot, AuthGate, root, calls, signupResult, signinError, authListener, dashboardSessions
+const testSession = { user: { id: 'new-teacher', email: 'teacher+class@proton.me' }, access_token: 'test-token' }
 
 before(async () => {
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, navigator: dom.window.navigator, IS_REACT_ACT_ENVIRONMENT: true })) {
@@ -15,12 +16,20 @@ before(async () => {
   }
   globalThis.__authEmailClient = { auth: {
     onAuthStateChange(callback) {
+      authListener = callback
       callback('INITIAL_SESSION', null)
-      return { data: { subscription: { unsubscribe() {} } } }
+      return { data: { subscription: { unsubscribe() { authListener = null } } } }
     },
-    async signInWithPassword(input) { calls.push({ method: 'signin', input }); return { error: null } },
-    async signUp(input) { calls.push({ method: 'signup', input }); return { data: { session: null }, error: null } },
+    async signInWithPassword(input) {
+      calls.push({ method: 'signin', input })
+      if (!signinError) authListener?.('SIGNED_IN', testSession)
+      return { error: signinError }
+    },
   } }
+  globalThis.__createAccount = async (email, password) => {
+    calls.push({ method: 'signup', input: { email, password } })
+    return signupResult
+  }
   server = await createServer({
     root: fileURLToPath(new URL('../', import.meta.url)), configFile: false, envDir: false,
     mode: 'test', server: { middlewareMode: true, watch: null, ws: false },
@@ -34,6 +43,7 @@ before(async () => {
         if (id === '\0auth-email-fixture') return `
           export const supabase = globalThis.__authEmailClient;
           export const getSupabase = () => supabase;
+          export const createAccount = (...args) => globalThis.__createAccount(...args);
           export const supabaseConfigurationError = null;
         `
       },
@@ -44,11 +54,18 @@ before(async () => {
   ;({ AuthGate } = await server.ssrLoadModule('/src/AuthGate.tsx'))
 })
 
-beforeEach(() => { calls = []; root = createRoot(document.getElementById('root')) })
+beforeEach(() => {
+  calls = []
+  dashboardSessions = []
+  signupResult = { data: { session: testSession }, error: null }
+  signinError = null
+  root = createRoot(document.getElementById('root'))
+})
 afterEach(async () => { await React.act(async () => root.unmount()) })
 after(async () => {
   await server?.close()
   delete globalThis.__authEmailClient
+  delete globalThis.__createAccount
   for (const [key, descriptor] of globals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor)
     else delete globalThis[key]
@@ -57,7 +74,10 @@ after(async () => {
 })
 
 async function mount(mode) {
-  await React.act(async () => root.render(React.createElement(AuthGate, null, () => null)))
+  await React.act(async () => root.render(React.createElement(AuthGate, null, session => {
+    dashboardSessions.push(session)
+    return React.createElement('div', { 'data-testid': 'dashboard' }, 'Dashboard')
+  })))
   if (mode === 'signup') await switchMode()
 }
 const switchMode = () => React.act(async () => document.querySelector('.auth-switch button').click())
@@ -195,4 +215,54 @@ test('switching auth modes clears the previous email warning', async () => {
   assert.equal(fieldError(), null)
   assert.equal(emailField().hasAttribute('aria-invalid'), false)
   assert.equal(emailField().value, 'invalid')
+})
+
+async function submitSignup() {
+  await mount('signup')
+  await type(emailField(), 'teacher+class@proton.me')
+  await fillPassword('signup')
+  await React.act(async () => document.querySelector('form').requestSubmit())
+}
+
+test('signup returns to login with an accessible success block and no automatic dashboard', async () => {
+  await submitSignup()
+  assert.ok(document.getElementById('signin-form'))
+  assert.equal(document.getElementById('signup-form'), null)
+  assert.equal(document.querySelector('.auth-success[role="status"]').textContent, 'Account successfully created. Please log in.')
+  assert.equal(document.querySelector('.auth-success').getAttribute('aria-live'), 'polite')
+  assert.equal(emailField().value, 'teacher+class@proton.me')
+  assert.equal(document.getElementById('signin-password').value, '')
+  assert.equal(document.activeElement, document.getElementById('signin-password'))
+  assert.equal(document.body.textContent.includes('confirmation link'), false)
+  assert.equal(document.body.textContent.includes('verification'), false)
+  assert.deepEqual(dashboardSessions, [])
+
+  await type(document.getElementById('signin-password'), 'test-password-123')
+  await React.act(async () => document.querySelector('form').requestSubmit())
+  assert.ok(document.querySelector('[data-testid="dashboard"]'))
+})
+
+test('signup failure keeps the signup form and shows no success message', async () => {
+  signupResult = { data: { session: null }, error: new Error('Unable to create account') }
+  await submitSignup()
+  assert.ok(document.getElementById('signup-form'))
+  assert.equal(document.querySelector('.auth-success'), null)
+  assert.equal(document.querySelector('[role="alert"]').textContent, 'Unable to create account')
+})
+
+test('signup without a session never claims success or asks for email verification', async () => {
+  signupResult = { data: { session: null }, error: null }
+  await submitSignup()
+  assert.ok(document.getElementById('signup-form'))
+  assert.equal(document.querySelector('.auth-success'), null)
+  assert.equal(document.querySelector('[role="alert"]').textContent, 'Account creation could not be completed. Please try again.')
+})
+
+test('a failed login clears the signup success message and displays the login error', async () => {
+  await submitSignup()
+  signinError = new Error('Invalid login credentials')
+  await type(document.getElementById('signin-password'), 'wrong-password')
+  await React.act(async () => document.querySelector('form').requestSubmit())
+  assert.equal(document.querySelector('.auth-success'), null)
+  assert.equal(document.querySelector('[role="alert"]').textContent, 'Invalid login credentials')
 })

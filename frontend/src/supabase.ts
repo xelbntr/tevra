@@ -17,3 +17,18 @@ export function getSupabase() {
   if (!supabase) throw new Error(supabaseConfigurationError ?? 'Supabase is not configured')
   return supabase
 }
+
+// Signup must not persist a session or sign the user into the dashboard.
+// Only the main client above owns the user's explicit login session.
+export function createAccount(email: string, password: string) {
+  if (!supabaseUrl || !supabaseKey) throw new Error(supabaseConfigurationError ?? 'Supabase is not configured')
+  const signupClient = createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      storageKey: 'tevra-signup',
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  })
+  return signupClient.auth.signUp({ email, password })
+}

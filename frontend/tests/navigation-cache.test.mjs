@@ -24,7 +24,7 @@ before(async () => {
     globals.set(key, Object.getOwnPropertyDescriptor(globalThis, key))
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value })
   }
-  globalThis.__sessionClient = { auth: {
+  globalThis.__sessionClient = { rpc: (...args) => globalThis.__workspaceSetup(...args), auth: {
     getSession: async () => ({ data: { session }, error: null }),
     onAuthStateChange: callback => {
       authListener = callback
@@ -62,6 +62,7 @@ beforeEach(() => {
   cache.setOwner(null)
   cache.clear()
   session = sessionFor('teacher-1')
+  globalThis.__workspaceSetup = async () => ({ data: false, error: null })
   requests = []
   gradebook = {
     classes,
@@ -108,6 +109,7 @@ after(async () => {
   globalThis.fetch = originalFetch
   await server?.close()
   delete globalThis.__sessionClient
+  delete globalThis.__workspaceSetup
   for (const [key, descriptor] of globals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor)
     else delete globalThis[key]
@@ -133,6 +135,63 @@ const navigate = label => React.act(async () => {
 const change = (select, value) => React.act(async () => {
   select.value = value
   select.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+})
+
+test('direct classroom links wait for setup before requesting any classroom records', async () => {
+  window.history.replaceState({}, '', '/grades')
+  let finishSetup
+  globalThis.__workspaceSetup = async name => {
+    assert.equal(name, 'ensure_sample_workspace')
+    return new Promise(resolve => { finishSetup = resolve })
+  }
+  await React.act(async () => root.render(React.createElement(App)))
+  assert.match(document.querySelector('[role=status]').textContent, /Getting your workspace ready/)
+  assert.equal(document.querySelector('nav'), null)
+  assert.equal(requests.length, 0)
+  await React.act(async () => finishSetup({ data: true, error: null }))
+  await settleUntil(() => document.querySelector('.grades-table'))
+  assert.equal(document.querySelector('h1').textContent, 'Grades')
+  assert.match(document.querySelector('.sample-data-notice').textContent, /fictional sample classroom data/)
+  await React.act(async () => document.querySelector('.profile-button').click())
+  assert.equal(document.querySelector('.account-email').textContent, 'teacher-1@tevra.test')
+})
+
+test('failed setup blocks data reads and retry recovers without changing the account', async () => {
+  let attempts = 0
+  globalThis.__workspaceSetup = async () => ++attempts === 1
+    ? { data: null, error: { message: 'Database unavailable' } }
+    : { data: false, error: null }
+  await React.act(async () => root.render(React.createElement(App)))
+  assert.match(document.querySelector('[role=alert]').textContent, /Please try again/)
+  assert.equal(requests.length, 0)
+  await React.act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === 'Try again').click())
+  await settleUntil(() => document.querySelector('nav'))
+  assert.equal(attempts, 2)
+  assert.equal(document.querySelector('.sample-data-notice'), null)
+})
+
+test('account switches ignore late setup completion from the previous account', async () => {
+  let finishPrevious
+  globalThis.__workspaceSetup = () => new Promise(resolve => { finishPrevious = resolve })
+  await React.act(async () => root.render(React.createElement(App)))
+  globalThis.__workspaceSetup = async () => ({ data: false, error: null })
+  await React.act(async () => {
+    session = sessionFor('teacher-2')
+    authListener('SIGNED_IN', session)
+  })
+  await settleUntil(() => document.querySelector('nav'))
+  await React.act(async () => finishPrevious({ data: true, error: null }))
+  assert.equal(document.querySelector('.sample-data-notice'), null)
+  await React.act(async () => document.querySelector('.profile-button').click())
+  assert.equal(document.querySelector('.account-email').textContent, 'teacher-2@tevra.test')
+})
+
+test('setup failure still permits sign out', async () => {
+  globalThis.__workspaceSetup = async () => { throw new Error('Network failed') }
+  await React.act(async () => root.render(React.createElement(App)))
+  await React.act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === 'Sign out').click())
+  assert.ok(document.querySelector('#signin-form'))
+  assert.equal(requests.length, 0)
 })
 
 test('StrictMode shares initial requests and cached tab switches require no network or loading screen', async t => {

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { getSupabase, supabase, supabaseConfigurationError } from './supabase'
+import { createAccount, getSupabase, supabase, supabaseConfigurationError } from './supabase'
 import { sessionCache } from './sessionCache'
 
 export function AuthGate({ children }: { children: (session: Session) => ReactNode }) {
@@ -15,6 +15,11 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const passwordInput = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (message && mode === 'signin' && !submitting) passwordInput.current?.focus()
+  }, [message, mode, submitting])
 
   useEffect(() => {
     if (!supabase) return
@@ -32,6 +37,7 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
     event.preventDefault()
     setSubmitting(true)
     setError('')
+    setMessage('')
     try {
       const { error } = await getSupabase().auth.signInWithPassword({ email: email.trim(), password })
       if (error) throw error
@@ -54,11 +60,15 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
 
     setSubmitting(true)
     try {
-      const { data, error } = await getSupabase().auth.signUp({ email: email.trim(), password })
+      const { data, error } = await createAccount(email.trim(), password)
       if (error) throw error
       if (!data.session) {
-        setMessage('Account created. Check your email for a confirmation link, then sign in.')
+        throw new Error('Account creation could not be completed. Please try again.')
       }
+      setEmail(email.trim())
+      setEmailInvalid(false)
+      setMode('signin')
+      setMessage('Account successfully created. Please log in.')
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Could not create your account. Please try again.')
     } finally {
@@ -86,6 +96,13 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
             <>
               <h1>{mode === 'signin' ? 'Welcome back' : 'Create your account'}</h1>
               <p>{mode === 'signin' ? 'Sign in to see your classes and students.' : 'Sign up with your email to get started.'}</p>
+              {message && <div className="auth-success" role="status" aria-live="polite" aria-atomic="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="m8 12 3 3 5-6" />
+                </svg>
+                <p>{message}</p>
+              </div>}
               <form key={mode} id={`${mode}-form`} className="auth-form" onSubmit={mode === 'signin' ? signIn : signUp} aria-busy={submitting}>
                 <label htmlFor={`${mode}-email`}>Email</label>
                 <input id={`${mode}-email`} name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false} required value={email}
@@ -99,7 +116,7 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
                   onChange={(event) => setEmail(event.target.value)} disabled={submitting} />
                 {emailInvalid && <p id={`${mode}-email-error`} className="auth-field-error" role="alert">Email is invalid</p>}
                 <label htmlFor={`${mode}-password`}>Password</label>
-                <input id={`${mode}-password`} name={mode === 'signin' ? 'password' : 'new-password'} type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required minLength={6} value={password}
+                <input ref={passwordInput} id={`${mode}-password`} name={mode === 'signin' ? 'password' : 'new-password'} type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required minLength={6} value={password}
                   onChange={(event) => setPassword(event.target.value)} disabled={submitting} />
                 {mode === 'signup' && <>
                   <label htmlFor="confirm-password">Confirm password</label>
@@ -107,7 +124,6 @@ export function AuthGate({ children }: { children: (session: Session) => ReactNo
                     onChange={(event) => setConfirmPassword(event.target.value)} disabled={submitting} />
                 </>}
                 {error && <p className="error-message" role="alert">{error}</p>}
-                {message && <p role="status">{message}</p>}
                 <button className="primary-button" type="submit" disabled={submitting}>
                   {submitting ? (mode === 'signin' ? 'Signing in…' : 'Creating account…') : (mode === 'signin' ? 'Sign in' : 'Sign up')}
                 </button>

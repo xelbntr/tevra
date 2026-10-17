@@ -486,6 +486,20 @@ h1 {
 
 .auth-card h1 { margin-top: 1.75rem; font-size: 1.75rem; }
 .auth-card p { font-size: 0.875rem; line-height: 1.6; overflow-wrap: anywhere; }
+.auth-success {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  margin-top: 1.25rem;
+  padding: 0.875rem;
+  border: 1px solid #35613e;
+  border-left: 4px solid #4f8a5b;
+  border-radius: 0.5625rem;
+  background: #eef6f0;
+  color: #294c33;
+}
+.auth-success svg { flex-shrink: 0; margin-top: 0.125rem; color: #4f8a5b; }
+.auth-success p { margin: 0; }
 .auth-form { display: grid; gap: 0.625rem; margin-top: 1.5rem; }
 .auth-form label { font-size: 0.8125rem; font-weight: 500; }
 .auth-form input {

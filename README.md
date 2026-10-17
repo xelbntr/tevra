@@ -81,7 +81,7 @@ AI-written observations are drafts for teacher review. Report averages are unwei
 
 ## How it works
 
-1. **Sign in.** Tevra uses Supabase Auth to establish your session and load the classes available to your account.
+1. **Sign in.** Tevra uses Supabase Auth to establish your session. On first login, accounts without classes receive their own fictional sample workspace: two classes, 15 students, five assessments per class, recorded grades, and 14 days of attendance. Existing classrooms are preserved. A notice identifies sample workspaces, and changes stay within the signed-in account.
 2. **Review the classroom picture.** Open the dashboard, select a class and attendance date, or choose a student for a report.
 3. **Ask and explore.** The assistant retrieves relevant classroom records to help answer questions and suggest teaching approaches. Recent chat context supports follow-up questions.
 4. **Review before changing a record.** Inspect any proposed score or attendance update and confirm or cancel it using its review card.
@@ -96,6 +96,16 @@ Tevra currently provides classroom overviews, attendance review, individual stud
 The dashboard's **Quick Grading** shortcut is marked **Coming soon**. General student, class, enrollment, and assessment creation or deletion is outside the assistant's supported actions.
 
 ## Behind the website
+
+### Sample workspace setup
+
+Apply the sample workspace migrations in `backend/supabase/migrations/` before deploying this frontend. The authenticated app calls `ensure_sample_workspace()` before mounting any classroom view, including direct links to attendance, grades, reports, and the assistant. Failed setup can be retried or signed out of. Sample attendance covers the 14 days ending on the setup date in Jakarta time; it is generated once, so later logins do not add new dates.
+
+The database initializes the entire workspace in one transaction. A profile row lock serializes concurrent requests, and a private completion record prevents repeated setup, even if sample classes are later deleted. Accounts that already have classes are recorded as existing workspaces and receive no sample data. The fixed fictional dataset never reads another account's records; student IDs, enrollments, assessments, grades, and attendance are independent for each account. Student numbers include the account ID because the existing schema requires globally unique numbers.
+
+The exposed function runs as the caller and delegates only this fixed initialization to a function in a non-exposed schema. It takes no target user ID, requires a signed-in account with a profile, and has no anonymous execution permission. The private setup table is inaccessible to clients; existing classroom access policies continue to govern ordinary requests. No service key is needed in the browser or backend.
+
+Run `backend/tests/sample-workspace.sql` through a privileged SQL connection to verify new and existing accounts, retries, record totals, saved edits, deletion behavior, and isolation between accounts. Its test users and records are rolled back. Frontend tests also cover waiting for setup on direct links, retrying a failure, signing out during setup, displaying the real account email, and ignoring late setup responses after account switches.
 
 Tevra uses a React and Vite frontend with an Express backend, both written in TypeScript. Supabase provides authentication and classroom data access, while Groq powers the AI assistant and report narratives. The backend verifies user sessions and uses the signed-in user's access token for database requests so existing data access policies remain in effect. Relevant queried records are sent to the AI provider to generate answers and report drafts.
 
