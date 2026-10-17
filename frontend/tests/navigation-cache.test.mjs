@@ -317,16 +317,24 @@ test('assessment creation adds an ungraded column and failed score saves retain 
   await settleUntil(() => document.querySelector('.grades-table'))
   await React.act(async () => gradesButton('New assessment').click())
   await fillInput(document.querySelector('.grades-assessment-form input'), 'Final exam')
+  const previousFetch = globalThis.fetch
+  let finishRefresh
+  globalThis.fetch = async (target, options) => {
+    if (new URL(target).pathname !== '/api/grades') return previousFetch(target, options)
+    if (options?.method === 'POST') return Response.json({ error: 'Please try saving again.' }, { status: 500 })
+    const response = await previousFetch(target, options)
+    await new Promise(resolve => { finishRefresh = resolve })
+    return response
+  }
   await React.act(async () => gradesButton('Create assessment').click())
   await settleUntil(() => document.querySelector('.grades-table thead').textContent.includes('Final exam'))
+  await settleUntil(() => finishRefresh)
   assert.equal(gradebook.assessments.at(-1).max_score, 100)
   await React.act(async () => document.querySelector('[aria-label="Add Final exam score for Ada (S001)"]').click())
   await fillInput(document.querySelector('#grade-score'), '88')
-  const previousFetch = globalThis.fetch
-  globalThis.fetch = async (target, options) => options?.method === 'POST' && new URL(target).pathname === '/api/grades'
-    ? Response.json({ error: 'Please try saving again.' }, { status: 500 }) : previousFetch(target, options)
   await React.act(async () => gradesButton('Submit Score').click())
   await settleUntil(() => document.querySelector('.grades-page [role=alert]'))
+  await React.act(async () => finishRefresh())
   assert.equal(document.querySelector('#grade-score').value, '88')
   assert.equal(gradesButton('Submit Score').disabled, false)
   assert.match(document.querySelector('.grades-page [role=alert]').textContent, /Please try saving again/)

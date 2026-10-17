@@ -28,11 +28,29 @@
 .workspace-setup-actions button:disabled { cursor: wait; opacity: 0.65; }
 .workspace-setup-actions button:focus-visible { outline: 3px solid #7a571f; outline-offset: 3px; }
 .sample-data-notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
   padding: 0.75rem 1rem;
   margin: 0 0 1rem;
   border: 1px solid rgba(139, 110, 69, 0.3);
   border-radius: 12px;
   background: rgba(255, 248, 233, 0.8);
-  font-size: 0.8125rem;
+  font-size: 12px;
   line-height: 1.5;
+}
+.sample-data-notice > svg { width: 16px; height: 16px; align-self: start; margin-top: 2px; }
+.sample-data-notice p { margin: 0; }
+.sample-data-dismiss {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .sample-data-dismiss { grid-column: 2 / -1; justify-self: start; }
 }

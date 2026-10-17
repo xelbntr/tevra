@@ -31,7 +31,8 @@ export function GradesPage({ revision = 0, newScoreRequest = 0, onRecordsChanged
   useEffect(() => {
     const controller = new AbortController()
     fetchGrades(controller.signal).then(result => {
-      if (!controller.signal.aborted) { setData(result); setError('') }
+      // A background refresh must not erase a more recent score-save error.
+      if (!controller.signal.aborted) setData(result)
     }).catch(reason => {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Could not load grades.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })

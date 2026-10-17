@@ -15,7 +15,7 @@ import type { AssistantMessage, AssistantProposal, DashboardData } from './api'
 import { getSupabase } from './supabase'
 import './App.css'
 
-type IconName = 'grid' | 'calendar' | 'grading' | 'report' | 'person' | 'book' | 'paper' | 'send' | 'arrow' | 'sparkles'
+type IconName = 'grid' | 'calendar' | 'grading' | 'report' | 'person' | 'book' | 'paper' | 'send' | 'arrow' | 'sparkles' | 'info'
 
 type IconProps = {
   name: IconName
@@ -37,6 +37,7 @@ function Icon({ name, size = 18, strokeWidth = 1.8 }: IconProps) {
   }
 
   const paths = {
+    info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7h.01" /></>,
     grid: <><rect x="4" y="4" width="5" height="5" rx="1" /><rect x="15" y="4" width="5" height="5" rx="1" /><rect x="4" y="15" width="5" height="5" rx="1" /><rect x="15" y="15" width="5" height="5" rx="1" /></>,
     calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16M8 14h3M8 17h6" /></>,
     grading: <><path d="M8 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" /><path d="M8 2h12v13H8zM11 7h6M11 10h4M11 13h2" /><path d="m16 4 2 2 3-3" /></>,
@@ -81,6 +82,7 @@ function Dashboard({ email, sampleData }: { email: string | undefined; sampleDat
   const [assistantPrompt, setAssistantPrompt] = useState('')
   const [notice, setNotice] = useState('')
   const [signingOut, setSigningOut] = useState(false)
+  const [sampleNoticeDismissed, setSampleNoticeDismissed] = useState(false)
   const [dataRevision, setDataRevision] = useState(0)
   const [newScoreRequest, setNewScoreRequest] = useState(0)
   const [gradesOpened, setGradesOpened] = useState(() => window.location.pathname.replace(/\/+$/, '') === '/grades')
@@ -178,7 +180,13 @@ function Dashboard({ email, sampleData }: { email: string | undefined; sampleDat
           </nav>
 
           <div className="dashboard-content">
-            {sampleData && <p className="sample-data-notice">Your workspace starts with fictional sample classroom data so you can explore Tevra. Changes you make are saved only to your account.</p>}
+            {sampleData && !sampleNoticeDismissed && (
+              <div className="sample-data-notice">
+                <Icon name="info" size={16} />
+                <p>Your workspace starts with fictional sample classroom data so you can explore Tevra. Changes you make are saved only to your account.</p>
+                <button className="sample-data-dismiss" type="button" onClick={() => setSampleNoticeDismissed(true)}>I understand</button>
+              </div>
+            )}
             <div className="heading-row">
               <div>
                 <p className="eyebrow">{isDashboard ? 'YOUR CLASSROOM AT A GLANCE' : 'TEVRA CLASSROOM'}</p>
