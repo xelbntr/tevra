@@ -17,6 +17,9 @@ const originalFetch = globalThis.fetch
 let requests: Request[], visible: boolean, score: number, attendance: { id: string; status: string } | null, loseRace: boolean
 let replies: unknown[]
 let rosterSize = 1
+let className = 'Math', studentName = 'Ada', studentNumber = 'S001'
+let assessmentTitle = 'Quiz 1'
+let rateAllowed = true, rateUnavailable = false
 let authenticate: typeof import('../src/auth.js').authenticate
 let data: typeof import('../src/assistant-data.js')
 let proposals: typeof import('../src/assistant-proposals.js')
@@ -39,6 +42,10 @@ before(async () => {
       return Response.json({ id: 'test', choices: [{ message: replies.shift(), finish_reason: 'stop' }] })
     }
     assert.equal(request.headers.get('authorization'), `Bearer ${jwt}`)
+    if (url.pathname === '/rest/v1/rpc/consume_assistant_request') {
+      if (rateUnavailable) return Response.json({ message: 'Unavailable' }, { status: 503 })
+      return Response.json({ allowed: rateAllowed, limit: 6, retry_after_seconds: rateAllowed ? 0 : 17 })
+    }
     const table = url.pathname.split('/').at(-1)
     if (request.method === 'PATCH' || request.method === 'POST') {
       assert.ok(['grades', 'attendance'].includes(table!))
@@ -51,21 +58,21 @@ before(async () => {
     const select = url.searchParams.get('select')!
     if (table === 'classes') {
       assert.equal(url.searchParams.get('lecturer_id'), `eq.${teacher}`)
-      if (url.searchParams.has('id')) return Response.json(visible ? { id: classId, name: 'Math', course_code: 'M01' } : null)
-      return Response.json([{ id: classId, name: 'Math' }], { headers: { 'Content-Range': '0-0/1' } })
+      if (url.searchParams.has('id')) return Response.json(visible ? { id: classId, name: className, course_code: 'M01' } : null)
+      return Response.json([{ id: classId, name: className, course_code: 'M01' }], { headers: { 'Content-Range': '0-0/1' } })
     }
     if (table === 'grades' && url.searchParams.has('id')) return Response.json({
       id: gradeId, enrollment_id: enrollmentId, score,
-      assessment: { title: 'Quiz 1', max_score: 100, class_id: classId },
+      assessment: { title: assessmentTitle, max_score: 100, class_id: classId },
     })
     if (table === 'attendance' && url.searchParams.has('enrollment_id')) return Response.json(attendance)
     if (table === 'enrollments' && url.searchParams.has('id')) {
       assert.equal(url.searchParams.get('class_id'), `eq.${classId}`)
-      return Response.json({ id: enrollmentId, student: { full_name: 'Ada', student_number: 'S001' } })
+      return Response.json({ id: enrollmentId, student: { full_name: studentName, student_number: studentNumber } })
     }
     let rows: unknown[] = []
-    if (table === 'enrollments') rows = [{ id: enrollmentId, status: 'active', student: { id: id(7), full_name: 'Ada', student_number: 'S001' } }]
-    if (table === 'assessments') rows = [{ id: assessmentId, title: 'Quiz 1', max_score: 100 }]
+    if (table === 'enrollments') rows = [{ id: enrollmentId, status: 'active', student: { id: id(7), full_name: studentName, student_number: studentNumber } }]
+    if (table === 'assessments') rows = [{ id: assessmentId, title: assessmentTitle, max_score: 100 }]
     if (table === 'grades') {
       assert.equal(url.searchParams.get('enrollment.class_id'), `eq.${classId}`)
       rows = url.searchParams.has('id') ? [] : [{ id: gradeId, score, enrollment_id: enrollmentId, assessment_id: assessmentId }]
@@ -101,6 +108,8 @@ before(async () => {
 
 beforeEach(async () => {
   requests = []; visible = true; score = 80; attendance = { id: id(6), status: 'absent' }; loseRace = false; replies = []; rosterSize = 1
+  className = 'Math'; studentName = 'Ada'; studentNumber = 'S001'
+  assessmentTitle = 'Quiz 1'; rateAllowed = true; rateUnavailable = false
   context = await authenticate(jwt)
 })
 after(async () => {
@@ -109,6 +118,7 @@ after(async () => {
 })
 const gradeEdit = () => ({ kind: 'grade' as const, class_id: classId, record_id: gradeId, score: 85 })
 const writes = () => requests.filter(r => ['PATCH', 'POST'].includes(r.method) && new URL(r.url).hostname === 'supabase.test')
+  .filter(r => !new URL(r.url).pathname.startsWith('/rest/v1/rpc/'))
 
 test('reads class records with explicit teacher and class scoping', async () => {
   assert.equal((await data.listClasses(context)).length, 1)
@@ -214,6 +224,158 @@ test('attendance supports corrections and recording an unmarked date without ove
 
 const call = (name: string, args: unknown) => ({ role: 'assistant', content: null, tool_calls: [{ id: `call-${name}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }] })
 
+test('Ada in Science resolves a first name and DEMO student number to the same signed preview', async () => {
+  className = 'Science (Sample)'; studentName = 'Ada Morgan'
+  assessmentTitle = 'Midterm Exam'
+  studentNumber = 'DEMO-d57a77db-14d3-49a7-91b8-53f59bfe6d5b-01'
+  score = 75
+  for (const student of ['ada', 'ADA', 'Ada', studentNumber.toLowerCase()]) {
+    replies = [call('read_class_records', { class_id: 'sCIenCe', student, assessment: 'MIDTERMS' }), call('propose_edit', { ...gradeEdit(), score: 100 })]
+    const response = await askAI({ text: studentNumber, history: [
+      { role: 'user', content: "update ada's midterms to 100" },
+      { role: 'assistant', content: 'Which class?' }, { role: 'user', content: 'science' },
+    ] }, context)
+    assert.equal(response.proposals.length, 1)
+    assert.match(response.proposals[0]!.label, /Ada Morgan.*Science.*Midterm Exam/)
+    assert.equal(response.proposals[0]!.before, 75)
+    assert.equal(response.proposals[0]!.after, 100)
+    assert.equal(writes().length, 0)
+  }
+  const body = await requests.find(r => new URL(r.url).hostname === 'api.groq.com')!.clone().json()
+  assert.match(body.messages[0].content, new RegExp(classId))
+  const recordTool = body.tools.find((tool: { function: { name: string } }) => tool.function.name === 'read_class_records')
+  assert.deepEqual(recordTool.function.parameters.properties.class_id.enum, [classId])
+  assert.ok(body.messages[0].content.length < 3500, 'keep the repeated system prompt compact')
+})
+
+test('assessment wording ignores case and common plurals but preserves ambiguity and numbering', () => {
+  const midterm = { id: assessmentId, title: 'Midterm Exam' }
+  const quiz1 = { id: id(21), title: 'Quiz 1' }, quiz2 = { id: id(22), title: 'Quiz 2' }
+  for (const wording of ['midterms', 'MIDTERMS', 'Midterm', 'midterm exam', '  Midterm   Exams ']) {
+    assert.equal(data.resolveAssessment([midterm, quiz1], wording), midterm)
+  }
+  assert.equal(data.resolveAssessment([quiz1, quiz2], 'QUIZZES 2'), quiz2)
+  assert.throws(() => data.resolveAssessment([quiz1, quiz2], 'quiz'), /More than one assessment/)
+  assert.throws(() => data.resolveAssessment([midterm, { id: id(23), title: 'Midterm Retake' }], 'midterms'), /More than one assessment/)
+  assert.throws(() => data.resolveAssessment([midterm], 'finals'), /No assessment matches/)
+})
+
+test('application rate limits block AI calls with a retry time; unavailable checks fail closed', async t => {
+  t.mock.method(console, 'error', () => {})
+  const post = () => originalFetch(endpoint + '/submit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+    body: JSON.stringify({ text: 'Find Ada' }),
+  })
+  rateAllowed = false
+  const blocked = await post()
+  assert.equal(blocked.status, 429)
+  assert.equal(blocked.headers.get('retry-after'), '17')
+  assert.match((await blocked.json() as { error: string }).error, /6 assistant messages per minute/)
+  rateUnavailable = true
+  assert.equal((await post()).status, 503)
+  assert.equal(requests.filter(r => new URL(r.url).hostname === 'api.groq.com').length, 0)
+  assert.equal(writes().length, 0)
+})
+
+test('model rounds stop at five, force a final answer, and tool calls stop at sixteen', async t => {
+  t.mock.method(console, 'error', () => {})
+  const { groq } = await import('../src/ai.js')
+  const create = t.mock.method(groq.chat.completions, 'create', async () => ({ choices: [{ message: call('list_classes', {}) }] }))
+  const { assistantErrorResponse } = await import('../src/assistant-errors.js')
+  await assert.rejects(askAI({ text: 'List classes', history: [] }, context), failure => assistantErrorResponse(failure).status === 422)
+  assert.equal(create.mock.calls.length, 5)
+  assert.equal((create.mock.calls[4]!.arguments[0] as { tool_choice: string }).tool_choice, 'none')
+  create.mock.mockImplementation(async () => ({ choices: [{ message: { role: 'assistant', content: null,
+    tool_calls: Array.from({ length: 17 }, (_, n) => ({ ...call('list_classes', {}).tool_calls[0], id: `lookup-${n}` })),
+  } }] }))
+  await assert.rejects(askAI({ text: 'List classes', history: [] }, context), /Too many lookups/)
+  assert.equal(create.mock.calls.length, 6)
+})
+
+test('hard deadline returns even if an operation ignores cancellation', async () => {
+  const { withAssistantDeadline } = await import('../src/assistant-limits.js')
+  let signal: AbortSignal | undefined
+  const started = Date.now()
+  await assert.rejects(withAssistantDeadline(async current => {
+    signal = current
+    return await new Promise<never>(() => {})
+  }, 10), /Assistant time limit reached/)
+  assert.equal(signal?.aborted, true)
+  assert.ok(Date.now() - started < 500)
+})
+
+test('ambiguous partial names never select a student and exact student numbers take priority', async () => {
+  rosterSize = 2
+  await assert.rejects(data.readStudentRecords(context, classId, 'Student'), /More than one student/)
+  assert.equal((await data.readStudentRecords(context, classId, 'S1')).students[0]!.student!.full_name, 'Student 1')
+  assert.equal(writes().length, 0)
+})
+
+test('student numbers in class_id are corrected without querying the database with the wrong identifier', async t => {
+  t.mock.method(console, 'error', () => {})
+  replies = [call('read_class_records', { class_id: 'DEMO-student-01', student: 'Ada' }),
+    call('read_class_records', { class_id: classId, student: 'Ada' }),
+    { role: 'assistant', content: 'Ada has 80 in Quiz 1.' }]
+  await askAI({ text: 'Find Ada in Math', history: [] }, context)
+  const modelCalls = requests.filter(r => new URL(r.url).hostname === 'api.groq.com')
+  const correction = await modelCalls[1]!.clone().json()
+  assert.match(correction.messages.at(-1).content, /not a student number/)
+  assert.ok(!requests.some(r => new URL(r.url).hostname === 'supabase.test' && r.url.includes('DEMO-student')))
+  assert.equal(writes().length, 0)
+})
+
+test('repeated malformed lookups stop before another model round and display a specific matching error', async t => {
+  t.mock.method(console, 'error', () => {})
+  replies = Array.from({ length: 4 }, () => call('read_class_records', { class_id: 'DEMO-student-01' }))
+  const response = await originalFetch(endpoint + '/submit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+    body: JSON.stringify({ text: 'Find Ada' }),
+  })
+  assert.equal(response.status, 422)
+  assert.match((await response.json() as { error: string }).error, /could not reliably match/)
+  assert.equal(requests.filter(r => new URL(r.url).hostname === 'api.groq.com').length, 2)
+  assert.equal(writes().length, 0)
+})
+
+test('rate limits return promptly without SDK retries and preserve safe retry guidance', async t => {
+  t.mock.method(console, 'error', () => {})
+  const { groq } = await import('../src/ai.js')
+  const create = t.mock.method(groq.chat.completions, 'create', async (_body: unknown, options: { maxRetries: number; timeout: number }) => {
+    assert.equal(options.maxRetries, 0)
+    assert.ok(options.timeout <= 20_000)
+    throw APIError.generate(429, { error: { message: 'Rate limit reached on tokens per minute' } }, undefined,
+      new Headers({ 'retry-after': '1.5', 'x-ratelimit-limit-tokens': '8000' }))
+  })
+  const response = await originalFetch(endpoint + '/submit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+    body: JSON.stringify({ text: 'Find Ada' }),
+  })
+  assert.equal(response.status, 429)
+  assert.equal(response.headers.get('retry-after'), '2')
+  const body = await response.json() as { error: string; retryAfterSeconds: number }
+  assert.match(body.error, /temporarily rate-limiting.*2 seconds/)
+  assert.equal(body.retryAfterSeconds, 2)
+  assert.equal(create.mock.calls.length, 1)
+})
+
+test('request budget stops additional model calls after a slow lookup', async t => {
+  const now = Date.now()
+  let elapsed = 0
+  t.mock.method(Date, 'now', () => now + elapsed)
+  const { groq } = await import('../src/ai.js')
+  const create = t.mock.method(groq.chat.completions, 'create', async () => {
+    elapsed = 40_001
+    return { choices: [{ message: call('list_classes', {}) }] }
+  })
+  const { assistantErrorResponse } = await import('../src/assistant-errors.js')
+  await assert.rejects(askAI({ text: 'Find Ada', history: [] }, context), failure => {
+    assert.equal(assistantErrorResponse(failure).status, 504)
+    assert.match(assistantErrorResponse(failure).message, /too long to complete the lookups/)
+    return true
+  })
+  assert.equal(create.mock.calls.length, 1)
+})
+
 test('provider failures include useful correlated diagnostics without leaking generated text or secrets', async t => {
   const { groq } = await import('../src/ai.js')
   const error = APIError.generate(400, { error: {
@@ -263,7 +425,7 @@ test('network, timeout, usage and provider credential failures get distinct safe
   assert.equal(JSON.parse(log.mock.calls[0]!.arguments[1] as string).error.cause.cause.code, 'ENOTFOUND')
   for (const [error, status, message] of [
     [new APIConnectionTimeoutError(), 504, /too long/],
-    [APIError.generate(429, { error: { message: 'Rate limited' } }, undefined, new Headers()), 429, /usage limit/],
+    [APIError.generate(429, { error: { message: 'Rate limited' } }, undefined, new Headers()), 429, /temporarily rate-limiting/],
     [APIError.generate(401, { error: { message: 'Bad key' } }, undefined, new Headers()), 503, /configured correctly/],
     [APIError.generate(413, { error: { message: 'Request too large' } }, undefined, new Headers()), 422, /too much data/],
     [APIError.generate(503, {}, undefined, new Headers()), 503, /temporarily unavailable/],

@@ -6,6 +6,7 @@ import { askAI, chatSchema } from './coach.js'
 import { verifyProposal } from './assistant-proposals.js'
 import { saveEdit } from './assistant-data.js'
 import { assistantErrorResponse, logAssistantFailure } from './assistant-errors.js'
+import { checkAssistantRateLimit } from './assistant-limits.js'
 
 export const assistantRouter = Router()
 assistantRouter.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next() })
@@ -26,6 +27,7 @@ assistantRouter.post(['/submit', '/api/assistant/confirm'], async (req, res) => 
       const proposal = verifyProposal(parsed.data.token, context.user.id)
       res.json(await saveEdit(context, proposal))
     } else {
+      await checkAssistantRateLimit(context)
       res.json(await askAI(chatSchema.parse(parsed.data), context, requestId))
     }
   } catch (error) {
@@ -35,7 +37,10 @@ assistantRouter.post(['/submit', '/api/assistant/confirm'], async (req, res) => 
       res.status(409).json({ error: error instanceof Error ? error.message : 'Could not save the change.' })
     } else {
       const failure = assistantErrorResponse(error)
-      res.status(failure.status).json({ error: failure.message, requestId })
+      if (failure.retryAfterSeconds) res.set('Retry-After', String(failure.retryAfterSeconds))
+      res.status(failure.status).json({ error: failure.message, requestId,
+        ...(failure.retryAfterSeconds ? { retryAfterSeconds: failure.retryAfterSeconds } : {}),
+      })
     }
   }
 })

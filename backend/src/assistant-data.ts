@@ -109,18 +109,46 @@ export async function readClassSummary(context: Context, classId: string) {
   }
 }
 
-export async function readStudentRecords(context: Context, classId: string, student: string) {
+function assessmentWords(value: string) {
+  const aliases: Record<string, string> = { midterms: 'midterm', finals: 'final', exams: 'exam', tests: 'test', quizzes: 'quiz', assignments: 'assignment', projects: 'project' }
+  return value.toLocaleLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(word => aliases[word] ?? word)
+}
+
+export function resolveAssessment<T extends { title: string }>(assessments: T[], query: string): T {
+  const words = assessmentWords(query)
+  if (!words.length) throw new Error('Provide an assessment name.')
+  const exact = assessments.filter(row => assessmentWords(row.title).join(' ') === words.join(' '))
+  const matches = exact.length ? exact : assessments.filter(row => words.every(word => assessmentWords(row.title).includes(word)))
+  if (matches.length !== 1) throw new Error(matches.length
+    ? 'More than one assessment matches. Ask which assessment before proposing an edit.'
+    : 'No assessment matches. Ask which assessment from this class to use.')
+  return matches[0]!
+}
+
+export async function readStudentRecords(context: Context, classId: string, student: string, assessment?: string) {
   const records = await readClass(context, classId)
-  const name = student.trim().toLocaleLowerCase()
-  const students = records.students.filter(row => row.student?.full_name?.toLocaleLowerCase() === name
+  const normalize = (value: string) => value.trim().toLocaleLowerCase().replace(/\s+/g, ' ')
+  const name = normalize(student)
+  const exact = records.students.filter(row => normalize(row.student?.full_name ?? '') === name
     || row.student?.student_number?.toLocaleLowerCase() === name)
-  if (students.length !== 1) throw new Error('Provide one exact student name or student number in this class. Use the class summary for an overview.')
+  // Resolve a unique name from the live roster, never treat a student number as a UUID.
+  // Exact matches take priority; shared first names must still be clarified.
+  const words = name.split(' ')
+  const students = exact.length ? exact : records.students.filter(row => {
+    const fullName = normalize(row.student?.full_name ?? '').split(' ')
+    return words.every(word => fullName.includes(word))
+  })
+  if (students.length !== 1) throw new Error(students.length
+    ? 'More than one student matches in this class. Ask for the full name or student number before proposing an edit.'
+    : 'No student matches in this class. Check the class and ask for the full name or student number.')
   const enrollmentId = students[0]!.id
-  const grades = records.grades.filter(row => row.enrollment_id === enrollmentId)
+  const selectedAssessment = assessment ? resolveAssessment(records.assessments, assessment) : undefined
+  const grades = records.grades.filter(row => row.enrollment_id === enrollmentId
+    && (!selectedAssessment || row.assessment_id === selectedAssessment.id))
   const assessmentIds = new Set(grades.map(row => row.assessment_id))
   return {
     class: records.class, students,
-    assessments: records.assessments.filter(row => assessmentIds.has(row.id)), grades,
+    assessments: selectedAssessment ? [selectedAssessment] : records.assessments.filter(row => assessmentIds.has(row.id)), grades,
     attendance: records.attendance.filter(row => row.enrollment_id === enrollmentId),
   }
 }

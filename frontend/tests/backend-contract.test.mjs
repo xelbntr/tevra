@@ -15,6 +15,16 @@ test('frontend uses the running backend submit contract', { timeout: 15_000 }, a
       response.end(JSON.stringify({ id: '00000000-0000-4000-8000-000000000001' }))
       return
     }
+    if (request.url.startsWith('/rest/v1/classes?')) {
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Content-Range': '*/0' })
+      response.end('[]')
+      return
+    }
+    if (request.url === '/rest/v1/rpc/consume_assistant_request') {
+      response.writeHead(200, { 'Content-Type': 'application/json' })
+      response.end(JSON.stringify({ allowed: true, limit: 6, retry_after_seconds: 0 }))
+      return
+    }
     let body = ''
     for await (const chunk of request) body += chunk
     upstreamRequest = { method: request.method, url: request.url, body: JSON.parse(body) }

@@ -10,6 +10,13 @@ export class AssistantFailure extends Error {
   }
 }
 
+export class AssistantRateLimitError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super('Assistant request rate limit reached')
+    this.name = 'AssistantRateLimitError'
+  }
+}
+
 function redact(value: string): string {
   let result = value
   for (const [key, secret] of Object.entries(process.env)) {
@@ -36,6 +43,11 @@ function describe(error: unknown, depth = 0): Record<string, unknown> {
     ...(typeof (provider?.code ?? record.code) === 'string' ? { code: redact(String(provider?.code ?? record.code)) } : {}),
     ...(typeof provider?.type === 'string' ? { type: redact(provider.type) } : {}),
     ...(error instanceof APIError ? { providerRequestId: error.headers?.get('x-request-id') ?? undefined } : {}),
+    ...(error instanceof APIError && error.status === 429 ? { rateLimit: Object.fromEntries(
+      ['retry-after', 'x-ratelimit-limit-tokens', 'x-ratelimit-remaining-tokens', 'x-ratelimit-reset-tokens',
+        'x-ratelimit-remaining-requests', 'x-ratelimit-reset-requests']
+        .map(key => [key, error.headers?.get(key)]).filter(([, value]) => value != null),
+    ) } : {}),
     ...(error instanceof AssistantFailure ? error.details : {}),
     // Preserve stack frames without repeating a potentially sensitive provider body.
     ...(error instanceof Error ? { stack: redact(error.stack?.split('\n').filter(line => /^\s+at /.test(line)).join('\n') ?? '') } : {}),
@@ -56,12 +68,31 @@ export function logAssistantFailure(error: unknown, context: { requestId: string
   }
 }
 
-export function assistantErrorResponse(error: unknown): { status: number; message: string } {
+export function assistantErrorResponse(error: unknown): { status: number; message: string; retryAfterSeconds?: number } {
+  if (error instanceof AssistantRateLimitError) return { status: 429, retryAfterSeconds: error.retryAfterSeconds,
+    message: `You have reached the limit of 6 assistant messages per minute. Please try again in ${error.retryAfterSeconds} seconds.` }
+  if (error instanceof AssistantFailure && error.details.stage === 'rate_limit') return {
+    status: 503, message: 'The assistant is temporarily unavailable. Please try again shortly.',
+  }
+  if (error instanceof AssistantFailure && error.details.stage === 'lookup') return {
+    status: 422, message: 'The assistant could not reliably match the class or student. Please include the class name and the student’s full name or student number.',
+  }
+  if (error instanceof AssistantFailure && error.details.stage === 'timeout') return {
+    status: 504, message: 'The assistant took too long to complete the lookups. Please ask about one class or student at a time.',
+  }
   const cause = error instanceof AssistantFailure ? error.cause ?? error : error
   if (cause instanceof APIConnectionTimeoutError) return { status: 504, message: 'The AI service took too long to respond. Please try again.' }
   if (cause instanceof APIConnectionError) return { status: 503, message: 'The server could not connect to the AI service. Please try again shortly.' }
   if (cause instanceof APIError) {
-    if (cause.status === 429) return { status: 429, message: 'The AI service has reached its usage limit. Please wait a moment and try again.' }
+    if (cause.status === 429) {
+      const retry = cause.headers?.get('retry-after')
+      const seconds = retry ? (/^\d+(\.\d+)?$/.test(retry) ? Number(retry) : (Date.parse(retry) - Date.now()) / 1000) : NaN
+      const retryAfterSeconds = Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : undefined
+      return { status: 429, retryAfterSeconds,
+        message: `The AI provider is temporarily rate-limiting requests.${retryAfterSeconds
+          ? ` Please try again in ${retryAfterSeconds} ${retryAfterSeconds === 1 ? 'second' : 'seconds'}.`
+          : ' Please try again shortly.'}` }
+    }
     if (cause.status === 401 || cause.status === 403) return { status: 503, message: 'The AI service is not configured correctly. Please contact the administrator.' }
     if (cause.status === 413) return { status: 422, message: 'This conversation contains too much data. Start a new chat or ask about fewer classes.' }
     if (cause.status && cause.status >= 500) return { status: 503, message: 'The AI service is temporarily unavailable. Please try again shortly.' }
