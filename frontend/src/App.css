@@ -582,9 +582,10 @@ button:disabled { cursor: wait; opacity: 0.65; }
 }
 .sign-out-button:hover,
 .sign-out-button:focus-visible,
-.sample-data-dismiss:hover,
-.sample-data-dismiss:focus-visible,
 .sign-out-button:disabled { background: #c65a52; color: #fff; }
+.sample-data-dismiss { border-color: #382717; background: #382717; color: #fff; }
+.sample-data-dismiss:hover,
+.sample-data-dismiss:focus-visible { border-color: #513923; background: #513923; }
 .sign-out-button:active,
 .sample-data-dismiss:active,
 .sign-out-button:disabled { transform: translateY(2px) scale(0.96); box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2); }

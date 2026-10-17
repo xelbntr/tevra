@@ -59,6 +59,7 @@ before(async () => {
 })
 
 beforeEach(() => {
+  window.localStorage.clear()
   cache.setOwner(null)
   cache.clear()
   session = sessionFor('teacher-1')
@@ -154,6 +155,47 @@ test('direct classroom links wait for setup before requesting any classroom reco
   assert.match(document.querySelector('.sample-data-notice').textContent, /fictional sample classroom data/)
   await React.act(async () => document.querySelector('.profile-button').click())
   assert.equal(document.querySelector('.account-email').textContent, 'teacher-1@tevra.test')
+})
+
+test('sample notice dismissal survives navigation and remounts using only browser storage', async () => {
+  globalThis.__workspaceSetup = async () => ({ data: true, error: null })
+  await mount()
+  assert.ok(document.querySelector('.sample-data-notice'))
+  const requestCount = requests.length
+  await React.act(async () => document.querySelector('.sample-data-dismiss').click())
+  assert.equal(document.querySelector('.sample-data-notice'), null)
+  assert.equal(window.localStorage.getItem('tevra:sample-notice-dismissed'), 'true')
+  assert.equal(requests.length, requestCount, 'acknowledgment makes no network request')
+  await navigate('Attendance')
+  assert.equal(document.querySelector('.sample-data-notice'), null)
+
+  await React.act(async () => root.unmount())
+  root = createRoot(document.getElementById('root'))
+  await mount()
+  assert.equal(document.querySelector('.sample-data-notice'), null)
+
+  window.localStorage.clear()
+  await React.act(async () => root.unmount())
+  root = createRoot(document.getElementById('root'))
+  await mount()
+  assert.ok(document.querySelector('.sample-data-notice'), 'clearing browser storage resets acknowledgment')
+})
+
+test('sample notice can still be dismissed when browser storage is unavailable', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage')
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    get() { throw new dom.window.DOMException('Storage blocked', 'SecurityError') },
+  })
+  try {
+    globalThis.__workspaceSetup = async () => ({ data: true, error: null })
+    await mount()
+    assert.ok(document.querySelector('.sample-data-notice'))
+    await React.act(async () => document.querySelector('.sample-data-dismiss').click())
+    assert.equal(document.querySelector('.sample-data-notice'), null)
+  } finally {
+    Object.defineProperty(window, 'localStorage', descriptor)
+  }
 })
 
 test('failed setup blocks data reads and retry recovers without changing the account', async () => {

@@ -74,6 +74,8 @@ const navigation = [
   { label: 'Reports', icon: 'report', href: '/reports' },
 ] satisfies { label: string; icon: IconName; href: string }[]
 
+const sampleNoticeStorageKey = 'tevra:sample-notice-dismissed'
+
 function App() {
   return (
     <AuthGate>
@@ -95,7 +97,13 @@ function Dashboard({ email, sampleData }: { email: string | undefined; sampleDat
   const [assistantPrompt, setAssistantPrompt] = useState('')
   const [notice, setNotice] = useState('')
   const [signingOut, setSigningOut] = useState(false)
-  const [sampleNoticeDismissed, setSampleNoticeDismissed] = useState(false)
+  const [sampleNoticeDismissed, setSampleNoticeDismissed] = useState(() => {
+    try {
+      return window.localStorage.getItem(sampleNoticeStorageKey) === 'true'
+    } catch {
+      return false
+    }
+  })
   const [dataRevision, setDataRevision] = useState(0)
   const [newScoreRequest, setNewScoreRequest] = useState(0)
   const [gradesOpened, setGradesOpened] = useState(() => window.location.pathname.replace(/\/+$/, '') === '/grades')
@@ -151,6 +159,15 @@ function Dashboard({ email, sampleData }: { email: string | undefined; sampleDat
     window.setTimeout(() => setNotice(''), 2600)
   }
 
+  function dismissSampleNotice() {
+    setSampleNoticeDismissed(true)
+    try {
+      window.localStorage.setItem(sampleNoticeStorageKey, 'true')
+    } catch {
+      // Dismiss for this visit even when browser storage is unavailable.
+    }
+  }
+
   function askAssistant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!prompt.trim()) return
@@ -197,7 +214,7 @@ function Dashboard({ email, sampleData }: { email: string | undefined; sampleDat
               <div className="sample-data-notice">
                 <Icon name="info" size={16} />
                 <p>Your workspace starts with fictional sample classroom data so you can explore Tevra. Changes you make are saved only to your account.</p>
-                <button className="sample-data-dismiss" type="button" onClick={() => setSampleNoticeDismissed(true)}>I understand</button>
+                <button className="sample-data-dismiss" type="button" onClick={dismissSampleNotice}>I understand</button>
               </div>
             )}
             <div className="heading-row">
