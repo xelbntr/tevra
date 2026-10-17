@@ -762,8 +762,7 @@ button:disabled { cursor: wait; opacity: 0.65; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
-.attendance-page { display: grid; gap: var(--section-gap); min-width: 0; }
-.attendance-results { display: grid; gap: var(--section-gap); }
+.attendance-page, .attendance-results { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--section-gap); min-width: 0; }
 .attendance-toolbar, .attendance-overview, .attendance-recap, .attendance-roster, .attendance-empty, .attendance-message {
   border: 0.0625rem solid rgba(105, 83, 50, 0.1);
   border-radius: 0.8125rem;
@@ -828,6 +827,8 @@ button:disabled { cursor: wait; opacity: 0.65; }
 
 @media (max-width: 620px) {
   .attendance-toolbar { grid-template-columns: 1fr; }
+  .attendance-overview-heading, .attendance-section-heading { flex-wrap: wrap; }
+  .attendance-overview-heading > div { min-width: 0; overflow-wrap: anywhere; }
   .attendance-overview, .attendance-recap, .attendance-roster { padding: 0.75rem; }
   .attendance-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .attendance-stat { min-height: 4.5rem; }

@@ -15,7 +15,7 @@
 .grades-table { border-collapse: separate; border-spacing: 0; width: 100%; text-align: left; font-size: .75rem; }
 .grades-table th, .grades-table td { padding: .65rem .875rem; border-bottom: 1px solid rgba(56,39,23,.08); white-space: nowrap; }
 .grades-table thead th { position: sticky; top: 0; z-index: 2; background: #eee8dc; }
-.grades-table th:first-child { position: sticky; left: 0; z-index: 1; background: #eee8dc; min-width: 9rem; }
+.grades-table th:first-child { position: sticky; left: 0; z-index: 1; background: #eee8dc; width: 9rem; min-width: 9rem; max-width: 9rem; white-space: normal; overflow-wrap: anywhere; }
 .grades-table thead th:first-child { z-index: 3; }
 .grades-table th small { display: block; font-size: .5625rem; font-weight: 400; color: #71644f; margin-top: .2rem; }
 .grade-cell { min-width: 4rem; padding: .375rem .625rem; border: 1px dashed rgba(56,39,23,.2); border-radius: .5rem; color: #8b7d69; background: rgba(255,255,255,.4); font-size: .8125rem; }
@@ -76,6 +76,7 @@
 .grades-assessment-form fieldset { grid-template-columns: 2fr 1fr 1fr; align-items: end; }
 .grades-assessment-form .grades-form-actions { grid-column: 1 / -1; }
 @media (max-width: 760px) {
+  .grades-table th:first-child { width: 7rem; min-width: 7rem; max-width: 7rem; }
   .grades-toolbar, .grades-assessment-form fieldset { grid-template-columns: 1fr; }
   .grades-student { flex-wrap: wrap; }
   .grades-student-actions { justify-items: start; }
