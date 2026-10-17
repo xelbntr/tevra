@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent, MouseEvent, SVGProps } from 'react'
 import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
@@ -179,7 +179,7 @@ function Dashboard({ email, sampleData }: { email: string | undefined; sampleDat
 
   return (
     <main className="app-frame">
-      <section className={`dashboard-shell${isDashboard ? ' dashboard-home' : ''}`} aria-label="Tevra dashboard">
+      <section className={`dashboard-shell${isDashboard ? ' dashboard-home' : ''}${isAssistant ? ' assistant-page' : ''}`} aria-label="Tevra dashboard">
         <header className="topbar">
           <a className="brand-mark" href="/dashboard" aria-label="Tevra home" onClick={(event) => navigate(event, '/dashboard')}>
             <img className="brand-icon" src="/tevra-app-icon.svg" alt="" />
@@ -268,7 +268,7 @@ function Dashboard({ email, sampleData }: { email: string | undefined; sampleDat
             <div hidden={!isAttendance}><AttendancePage key={dataRevision} /></div>
             <div hidden={!isReports}><ReportsPage key={dataRevision} /></div>
             <div hidden={!isGrades}>{(isGrades || gradesOpened) && <GradesPage revision={dataRevision} newScoreRequest={newScoreRequest} onRecordsChanged={() => setDataRevision(value => value + 1)} />}</div>
-            <div hidden={!isAssistant}>
+            <div className="assistant-view" hidden={!isAssistant}>
               <AssistantChat
                 initialPrompt={assistantPrompt}
                 onInitialPromptHandled={() => setAssistantPrompt('')}
@@ -310,7 +310,39 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled, onRecordsChanged
   const [error, setError] = useState('')
   const [proposals, setProposals] = useState<AssistantProposal[]>([])
   const [saving, setSaving] = useState(false)
+  const [composerFocused, setComposerFocused] = useState(false)
+  const promptInput = useRef<HTMLTextAreaElement>(null)
+  const transcript = useRef<HTMLDivElement>(null)
   const busy = useRef(false)
+
+  useLayoutEffect(() => {
+    const input = promptInput.current
+    if (!input) return
+    function resize() {
+      if (!input) return
+      const styles = window.getComputedStyle(input)
+      input.style.height = styles.lineHeight
+      if (composerFocused) {
+        input.style.height = `${Math.min(input.scrollHeight, parseFloat(styles.maxHeight))}px`
+      } else {
+        input.scrollTop = 0
+      }
+    }
+    resize()
+    // Re-measure wrapped text on rotation, viewport changes, and tab reopening.
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(resize)
+    observer.observe(input)
+    return () => observer.disconnect()
+  }, [draft, composerFocused])
+
+  useLayoutEffect(() => {
+    // Reveal the new prompt; replies preserve the reader's chosen scroll position.
+    if (messages.at(-1)?.role !== 'user') return
+    const container = transcript.current
+    const prompt = container?.querySelector<HTMLElement>('.chat-message-user:last-of-type')
+    if (container && prompt) container.scrollTop = prompt.offsetTop
+  }, [messages])
 
   const sendMessage = useCallback(async (rawMessage: string) => {
     const content = rawMessage.trim()
@@ -365,19 +397,11 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled, onRecordsChanged
 
   return (
     <section className="assistant-panel prism-surface" aria-label="AI Assistant">
-      <div className="assistant-intro">
-        <span className="assistant-icon"><Icon name="sparkles" size={20} /></span>
-        <div>
-          <span className="assistant-kicker">POWERED BY YOUR CLASSROOM</span>
-          <h2>Your classroom, connected.</h2>
-        </div>
-      </div>
-      <div className="chat-transcript" aria-live="polite" aria-busy={loading}>
+      <div className="chat-transcript" ref={transcript} role="region" aria-label="Conversation" tabIndex={0} aria-live="polite" aria-busy={loading}>
         {messages.length === 0 && (
           <div className="chat-empty">
             <span className="chat-empty-emblem"><Icon name="sparkles" size={34} /></span>
             <strong>What would you like help with?</strong>
-            <span>Your classroom has a story. Let’s find the next step.</span>
             <div className="assistant-starters" aria-label="Suggested questions">
               {[
                 { icon: 'person', title: 'Find who needs support', prompt: 'Which students need support based on their grades and attendance?' },
@@ -403,21 +427,23 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled, onRecordsChanged
           </article>
         ))}
         {loading && <p className="chat-pending" role="status"><Icon name="sparkles" size={16} />Tevra AI is thinking<span className="thinking-dots" aria-hidden="true">…</span></p>}
+        {proposals.length > 0 && <section className="assistant-changes" aria-label="Proposed changes">
+          <p>Review before saving. Each preview expires after 15 minutes.</p>
+          {proposals.map(proposal => <article className="assistant-change" key={proposal.token}>
+            <strong>{proposal.label}</strong>
+            <p>{proposal.before ?? 'Unmarked'} → {proposal.after}</p>
+            <button className="primary-button" type="button" disabled={saving || loading} onClick={() => void confirmChange(proposal)}>{saving ? 'Saving…' : 'Confirm change'}</button>
+            <button className="secondary-button" type="button" disabled={saving || loading} onClick={() => setProposals(current => current.filter(item => item.token !== proposal.token))}>Cancel</button>
+          </article>)}
+        </section>}
+        {error && <p className="error-message chat-error" role="alert">{error}</p>}
       </div>
-      {proposals.length > 0 && <section className="assistant-changes" aria-label="Proposed changes">
-        <p>Review before saving. Each preview expires after 15 minutes.</p>
-        {proposals.map(proposal => <article className="assistant-change" key={proposal.token}>
-          <strong>{proposal.label}</strong>
-          <p>{proposal.before ?? 'Unmarked'} → {proposal.after}</p>
-          <button className="primary-button" type="button" disabled={saving || loading} onClick={() => void confirmChange(proposal)}>{saving ? 'Saving…' : 'Confirm change'}</button>
-          <button className="secondary-button" type="button" disabled={saving || loading} onClick={() => setProposals(current => current.filter(item => item.token !== proposal.token))}>Cancel</button>
-        </article>)}
-      </section>}
-      {error && <p className="error-message chat-error" role="alert">{error}</p>}
       <form className="assistant-composer prism-surface" onSubmit={submit}>
         <label className="sr-only" htmlFor="assistant-prompt">Message the AI assistant</label>
-        <textarea id="assistant-prompt" aria-describedby="assistant-disclaimer" rows={3} maxLength={5000} value={draft}
+        <textarea id="assistant-prompt" ref={promptInput} aria-describedby="assistant-disclaimer" rows={1} maxLength={5000} value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onFocus={() => setComposerFocused(true)}
+          onBlur={() => setComposerFocused(false)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
               event.preventDefault()
@@ -425,11 +451,9 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled, onRecordsChanged
             }
           }}
           placeholder="Write a message…" disabled={loading || saving} />
-        <div className="composer-footer">
-          <button className="primary-button" type="submit" disabled={loading || saving || !draft.trim()}>
-            {loading ? 'Thinking…' : <><span>Send</span><Icon name="send" size={15} /></>}
-          </button>
-        </div>
+        <button className="assistant-send" type="submit" aria-label="Send message" disabled={loading || saving || !draft.trim()}>
+          <Icon name="send" size={20} />
+        </button>
       </form>
       <p className="assistant-disclaimer" id="assistant-disclaimer">AI responses can be inaccurate. Review materials before using them.</p>
     </section>
