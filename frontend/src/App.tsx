@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent, MouseEvent, SVGProps } from 'react'
 import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
@@ -14,6 +14,7 @@ import { AuthenticationError, fetchDashboard, sendAssistantChat, confirmAssistan
 import type { AssistantMessage, AssistantProposal, DashboardData } from './api'
 import { getSupabase } from './supabase'
 import './App.css'
+import './Prism.css'
 
 type IconName = 'grid' | 'calendar' | 'grading' | 'report' | 'person' | 'book' | 'paper' | 'send' | 'arrow' | 'sparkles' | 'info'
 
@@ -24,6 +25,7 @@ type IconProps = {
 }
 
 function Icon({ name, size = 18, strokeWidth = 1.8 }: IconProps) {
+  const gradientId = useId()
   const common: SVGProps<SVGSVGElement> = {
     width: `${size / 16}rem`,
     height: `${size / 16}rem`,
@@ -50,15 +52,26 @@ function Icon({ name, size = 18, strokeWidth = 1.8 }: IconProps) {
     sparkles: <><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z" /><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z" /><path d="m5 2 .7 1.8L7.5 4.5l-1.8.7L5 7l-.7-1.8L2.5 4.5l1.8-.7L5 2Z" /></>,
   }
 
-  return <svg {...common}>{paths[name]}</svg>
+  return <svg {...common} stroke={name === 'sparkles' ? `url(#${gradientId})` : common.stroke}>
+    {name === 'sparkles' && <defs>
+      <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#168b98" />
+        <stop offset="30%" stopColor="#5d73d9" />
+        <stop offset="58%" stopColor="#a544b3" />
+        <stop offset="80%" stopColor="#d46a95" />
+        <stop offset="100%" stopColor="#b88531" />
+      </linearGradient>
+    </defs>}
+    {paths[name]}
+  </svg>
 }
 
 const navigation = [
   { label: 'Dashboard', icon: 'grid', href: '/dashboard' },
   { label: 'Attendance', icon: 'calendar', href: '/attendance' },
+  { label: 'AI Assistant', icon: 'sparkles', href: '/assistant' },
   { label: 'Grades', icon: 'grading', href: '/grades' },
   { label: 'Reports', icon: 'report', href: '/reports' },
-  { label: 'AI Assistant', icon: 'sparkles', href: '/assistant' },
 ] satisfies { label: string; icon: IconName; href: string }[]
 
 function App() {
@@ -158,14 +171,14 @@ function Dashboard({ email, sampleData }: { email: string | undefined; sampleDat
         </header>
 
         <div className="dashboard-layout">
-          <nav className="side-nav" aria-label="Main navigation" style={{
+          <nav className={`side-nav${isAssistant ? ' has-ai-active' : ''}`} aria-label="Main navigation" style={{
             '--active-tab': activeNavigationIndex,
             '--nav-count': navigation.length,
           } as CSSProperties}>
             {activeNavigationIndex >= 0 && <span className="nav-selection" aria-hidden="true" />}
             {navigation.map((item) => (
               <a
-                className={`nav-button ${(currentPath === item.href || (item.label === 'Dashboard' && currentPath === '/')) ? 'is-active' : ''}`}
+                className={`nav-button${item.href === '/assistant' ? ' nav-ai' : ''} ${(currentPath === item.href || (item.label === 'Dashboard' && currentPath === '/')) ? 'is-active' : ''}`}
                 href={item.href}
                 key={item.label}
                 aria-label={item.label}
@@ -173,7 +186,7 @@ function Dashboard({ email, sampleData }: { email: string | undefined; sampleDat
                 aria-current={(currentPath === item.href || (item.label === 'Dashboard' && currentPath === '/')) ? 'page' : undefined}
                 onClick={(event) => navigate(event, item.href)}
               >
-                <Icon name={item.icon} size={18} />
+                <span className="nav-icon"><Icon name={item.icon} size={18} /></span>
                 <span className="nav-label" aria-hidden="true">{item.label === 'Dashboard' ? 'Home' : item.label === 'AI Assistant' ? 'Assistant' : item.label}</span>
               </a>
             ))}
@@ -189,8 +202,8 @@ function Dashboard({ email, sampleData }: { email: string | undefined; sampleDat
             )}
             <div className="heading-row">
               <div>
-                <p className="eyebrow">{isDashboard ? 'YOUR CLASSROOM AT A GLANCE' : 'TEVRA CLASSROOM'}</p>
-                <h1>{currentPage?.label ?? (isDashboard ? 'Dashboard' : 'Page not found')}</h1>
+                <p className="eyebrow">{isDashboard ? 'YOUR CLASSROOM AT A GLANCE' : isAssistant ? 'CLASSROOM INTELLIGENCE, WITH TEVRA' : 'TEVRA CLASSROOM'}</p>
+                <h1>{isAssistant ? 'Tevra AI' : currentPage?.label ?? (isDashboard ? 'Dashboard' : 'Page not found')}</h1>
               </div>
               {isDashboard && <span className="today-pill">Overview</span>}
             </div>
@@ -199,13 +212,14 @@ function Dashboard({ email, sampleData }: { email: string | undefined; sampleDat
                 loaded content immediately. Their shared requests are deduplicated. */}
             <div hidden={!isDashboard}>
               <>
-                <form className="ask-bar" onSubmit={askAssistant}>
+                <div className="ask-heading"><Icon name="sparkles" size={15} /><span>Tevra AI</span></div>
+                <form className="ask-bar prism-surface" onSubmit={askAssistant}>
                   <label className="sr-only" htmlFor="ask-ai">Ask AI</label>
                   <input
                     id="ask-ai"
                     value={prompt}
                     onChange={(event) => setPrompt(event.target.value)}
-                    placeholder="Ask AI anything about your class..."
+                    placeholder="Ask about your class…"
                   />
                   <button type="submit" aria-label="Send question"><Icon name="send" size={16} /></button>
                 </form>
@@ -333,19 +347,30 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled, onRecordsChanged
   }
 
   return (
-    <section className="assistant-panel" aria-label="AI Assistant">
+    <section className="assistant-panel prism-surface" aria-label="AI Assistant">
       <div className="assistant-intro">
         <span className="assistant-icon"><Icon name="sparkles" size={20} /></span>
         <div>
-          <h2>Teaching assistant</h2>
-          <p>Explore your classes, grades and attendance, or ask to update a score or attendance status.</p>
+          <span className="assistant-kicker">POWERED BY YOUR CLASSROOM</span>
+          <h2>Your classroom, connected.</h2>
         </div>
       </div>
       <div className="chat-transcript" aria-live="polite" aria-busy={loading}>
         {messages.length === 0 && (
           <div className="chat-empty">
+            <span className="chat-empty-emblem"><Icon name="sparkles" size={34} /></span>
             <strong>What would you like help with?</strong>
-            <span>Try “Which students need support?” or “Change Ada’s Quiz 1 score to 85 in Math.”</span>
+            <span>Your classroom has a story. Let’s find the next step.</span>
+            <div className="assistant-starters" aria-label="Suggested questions">
+              {[
+                { icon: 'person', title: 'Find who needs support', prompt: 'Which students need support based on their grades and attendance?' },
+                { icon: 'grading', title: 'Update a student’s score', prompt: 'Help me update a student’s score. Ask me which student, class, assessment and new score, then show a preview before saving.' },
+                { icon: 'calendar', title: 'Correct attendance', prompt: 'Help me correct an attendance record. Ask me which student, class, date and status, then show a preview before saving.' },
+              ].map(item => <button key={item.title} type="button" disabled={loading || saving} onClick={() => void sendMessage(item.prompt)}>
+                <Icon name={item.icon as IconName} size={18} />
+                <span>{item.title}</span><Icon name="arrow" size={14} />
+              </button>)}
+            </div>
           </div>
         )}
         {messages.map((message, index) => (
@@ -360,7 +385,7 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled, onRecordsChanged
             ) : <p className="chat-user-content">{message.content}</p>}
           </article>
         ))}
-        {loading && <p className="chat-pending" role="status">Tevra AI is thinking…</p>}
+        {loading && <p className="chat-pending" role="status"><Icon name="sparkles" size={16} />Tevra AI is thinking<span className="thinking-dots" aria-hidden="true">…</span></p>}
       </div>
       {proposals.length > 0 && <section className="assistant-changes" aria-label="Proposed changes">
         <p>Review before saving. Each preview expires after 15 minutes.</p>
@@ -372,9 +397,9 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled, onRecordsChanged
         </article>)}
       </section>}
       {error && <p className="error-message chat-error" role="alert">{error}</p>}
-      <form className="assistant-composer" onSubmit={submit}>
+      <form className="assistant-composer prism-surface" onSubmit={submit}>
         <label className="sr-only" htmlFor="assistant-prompt">Message the AI assistant</label>
-        <textarea id="assistant-prompt" rows={3} maxLength={5000} value={draft}
+        <textarea id="assistant-prompt" aria-describedby="assistant-disclaimer" rows={3} maxLength={5000} value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
@@ -384,12 +409,12 @@ function AssistantChat({ initialPrompt, onInitialPromptHandled, onRecordsChanged
           }}
           placeholder="Write a message…" disabled={loading || saving} />
         <div className="composer-footer">
-          <span>AI responses can be inaccurate. Review materials before using them.</span>
           <button className="primary-button" type="submit" disabled={loading || saving || !draft.trim()}>
-            {loading ? 'Thinking…' : 'Send'}
+            {loading ? 'Thinking…' : <><span>Send</span><Icon name="send" size={15} /></>}
           </button>
         </div>
       </form>
+      <p className="assistant-disclaimer" id="assistant-disclaimer">AI responses can be inaccurate. Review materials before using them.</p>
     </section>
   )
 }
